@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-import random
 import re
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -12,6 +10,7 @@ import httpx
 from selectolax.parser import HTMLParser
 
 from app.core.config import Settings
+from app.services.http_client import RetryHttpClient
 from app.services.proxy import ProxyPool
 
 FUNPAY_BASE_URL = "https://funpay.com"
@@ -92,82 +91,27 @@ class FunPayClient:
             mobile_proxies=(settings.mobile_proxies if mobile_proxies is None else mobile_proxies),
         )
         self._cookies = httpx.Cookies()
-        self._last_request_ts: float = 0.0
-
-    def _sleep_rate_limit(self) -> None:
-        min_delay = self.settings.funpay_min_delay_seconds
-        now = time.monotonic()
-        elapsed = now - self._last_request_ts
-        if elapsed < min_delay:
-            time.sleep(min_delay - elapsed)
-        jitter = random.uniform(self.settings.funpay_jitter_min, self.settings.funpay_jitter_max)
-        time.sleep(jitter)
-        self._last_request_ts = time.monotonic()
+        self._http = RetryHttpClient(
+            settings=settings,
+            proxy_pool=self.proxy_pool,
+            default_headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/123.0.0.0 Safari/537.36"
+                )
+            },
+        )
 
     def _request(self, method: str, url: str, data: dict[str, str] | None = None) -> httpx.Response:
-        last_status: int | None = None
-        last_error: Exception | None = None
-
-        for attempt in range(self.settings.funpay_max_retries):
-            selection = self.proxy_pool.choose(attempt=attempt, last_status=last_status)
-            self._sleep_rate_limit()
-
-            client_kwargs: dict[str, object] = {
-                "timeout": self.settings.funpay_request_timeout,
-                "follow_redirects": True,
-                "headers": {
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/123.0.0.0 Safari/537.36"
-                    )
-                },
-            }
-            if selection.proxy_url:
-                client_kwargs["proxy"] = selection.proxy_url
-
-            try:
-                with httpx.Client(**client_kwargs) as client:
-                    response = client.request(
-                        method=method,
-                        url=url,
-                        data=data,
-                        cookies=self._cookies,
-                    )
-                self._cookies.update(response.cookies)
-
-                if response.status_code == 429:
-                    last_status = 429
-                    backoff = self.settings.funpay_base_backoff_seconds * (2**attempt)
-                    time.sleep(backoff)
-                    continue
-
-                response.raise_for_status()
-                return response
-            except httpx.HTTPStatusError as exc:
-                last_error = exc
-                status_code = exc.response.status_code
-                last_status = status_code
-                if status_code in {429, 500, 502, 503, 504}:
-                    backoff = self.settings.funpay_base_backoff_seconds * (2**attempt)
-                    time.sleep(backoff)
-                    continue
-                raise
-            except httpx.RequestError as exc:
-                last_error = exc
-                backoff = self.settings.funpay_base_backoff_seconds * (2**attempt)
-                time.sleep(backoff)
-
-        if last_error:
-            raise last_error
-        if last_status is not None:
-            raise RuntimeError(
-                f"Не удалось выполнить запрос к FunPay: повторяющийся HTTP {last_status} "
-                f"после {self.settings.funpay_max_retries} попыток"
-            )
-        raise RuntimeError(
-            f"Не удалось выполнить запрос к FunPay: сетевой сбой после {self.settings.funpay_max_retries} попыток"
+        response = self._http.request(
+            method=method,
+            url=url,
+            data=data,
+            cookies=self._cookies,
         )
+        self._cookies.update(response.cookies)
+        return response
 
     @staticmethod
     def _parse_section_id_from_url(url: str) -> int | None:

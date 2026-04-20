@@ -3,6 +3,7 @@ from app.services.text_utils import (
     meaningful_query_tokens,
     normalize_text,
     query_tokens,
+    repair_mojibake_cyrillic,
     relevance_score,
 )
 
@@ -30,3 +31,8 @@ def test_generic_only_overlap_filtered() -> None:
     assert meaningful_query_tokens(query) == ["peak"]
     assert not is_text_relevant("Diablo 3 Reaper Souls аренда на 7 дней", query)
     assert is_text_relevant("Peak account аренда 7 дней", query)
+
+
+def test_repair_mojibake_cyrillic() -> None:
+    assert repair_mojibake_cyrillic("Ð°Ñ€ÐµÐ½Ð´Ð° 24 Ñ‡Ð°ÑÐ°") == "аренда 24 часа"
+    assert repair_mojibake_cyrillic("24 ????????") == "24 ????????"

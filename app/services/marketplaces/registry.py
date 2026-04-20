@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.schemas.v2 import MarketplaceCatalogItemDTO, MarketplaceSlug
 from app.services.marketplaces.funpay_provider import FunPayProvider
+from app.services.marketplaces.playerok_provider import PlayerOkProvider
 
 
 @dataclass(frozen=True)
@@ -20,12 +21,7 @@ class MarketplaceInfo:
 class MarketplaceRegistry:
     CATALOG: tuple[MarketplaceInfo, ...] = (
         MarketplaceInfo(slug=MarketplaceSlug.funpay, label="FunPay", enabled=True),
-        MarketplaceInfo(
-            slug=MarketplaceSlug.playerok,
-            label="PlayerOK",
-            enabled=False,
-            reason="Скоро: провайдер еще не реализован",
-        ),
+        MarketplaceInfo(slug=MarketplaceSlug.playerok, label="PlayerOK", enabled=True),
         MarketplaceInfo(
             slug=MarketplaceSlug.ggsell,
             label="GGSell",
@@ -64,6 +60,8 @@ class MarketplaceRegistry:
             raise ValueError(f"marketplace_not_available:{slug.value}:{reason}")
         if slug == MarketplaceSlug.funpay:
             return FunPayProvider(db=self.db, settings=self.settings)
+        if slug == MarketplaceSlug.playerok:
+            return PlayerOkProvider(db=self.db, settings=self.settings)
         raise ValueError(f"marketplace_not_available:{slug.value}:Провайдер не реализован")
 
     @classmethod

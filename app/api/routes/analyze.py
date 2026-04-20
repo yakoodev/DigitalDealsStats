@@ -21,51 +21,18 @@ from app.schemas.analyze import (
 from app.services.analyzer import AnalyzerService
 from app.services.funpay_client import FunPayClient, GameCategory
 from app.services.i18n import tr
+from app.services.proxy_utils import normalize_proxy_list, normalize_single_proxy
+from app.services.text_utils import repair_mojibake_cyrillic
 
 router = APIRouter(prefix="/v1", tags=["analyze"])
 
 
 def _normalize_single_proxy(value: str) -> str:
-    raw = value.strip()
-    if not raw:
-        return raw
-
-    # Поддерживаем как корректный URL, так и сокращенные варианты.
-    # 1) user:pass@host:port -> добавляем http://
-    # 2) host:port@user:pass -> переставляем местами + http://
-    # 3) host:port -> добавляем http://
-    if raw.startswith(("http://", "https://", "socks5://", "socks5h://")):
-        return raw
-
-    if "@" in raw:
-        left, right = raw.split("@", 1)
-        left = left.strip()
-        right = right.strip()
-
-        # host:port@user:pass -> user:pass@host:port
-        left_parts = left.rsplit(":", 1)
-        right_parts = right.split(":", 1)
-        if len(left_parts) == 2 and left_parts[1].isdigit() and len(right_parts) == 2:
-            user, password = right_parts
-            host, port = left_parts
-            if user and password and host and port:
-                return f"http://{user}:{password}@{host}:{port}"
-
-        # user:pass@host:port -> просто добавляем схему
-        return f"http://{left}@{right}"
-
-    # host:port
-    if ":" in raw:
-        return f"http://{raw}"
-
-    return raw
+    return normalize_single_proxy(value)
 
 
 def _normalize_proxy_list(raw_values: list[str] | None) -> str | None:
-    if raw_values is None:
-        return None
-    values = [_normalize_single_proxy(item) for item in raw_values if item and item.strip()]
-    return ",".join(values)
+    return normalize_proxy_list(raw_values)
 
 
 def _build_funpay_client(payload: AnalyzeRequestDTO) -> FunPayClient:
@@ -109,7 +76,7 @@ def analyze(
     db: Session = Depends(get_db),
 ) -> AnalyzeEnvelopeDTO:
     settings = get_settings()
-    payload.query = payload.query.strip()
+    payload.query = repair_mojibake_cyrillic(payload.query).strip()
     if (
         not payload.query
         and payload.category_id is None

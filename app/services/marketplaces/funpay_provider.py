@@ -25,41 +25,8 @@ from app.schemas.v2 import (
 from app.services.analyzer import AnalyzerService
 from app.services.funpay_client import FunPayClient
 from app.services.marketplaces.base import MarketplaceProvider
+from app.services.proxy_utils import normalize_proxy_list
 from app.services.text_utils import normalize_text
-
-
-def _normalize_single_proxy(value: str) -> str:
-    raw = value.strip()
-    if not raw:
-        return raw
-
-    if raw.startswith(("http://", "https://", "socks5://", "socks5h://")):
-        return raw
-
-    if "@" in raw:
-        left, right = raw.split("@", 1)
-        left = left.strip()
-        right = right.strip()
-        left_parts = left.rsplit(":", 1)
-        right_parts = right.split(":", 1)
-        if len(left_parts) == 2 and left_parts[1].isdigit() and len(right_parts) == 2:
-            user, password = right_parts
-            host, port = left_parts
-            if user and password and host and port:
-                return f"http://{user}:{password}@{host}:{port}"
-        return f"http://{left}@{right}"
-
-    if ":" in raw:
-        return f"http://{raw}"
-
-    return raw
-
-
-def _normalize_proxy_list(raw_values: list[str] | None) -> str | None:
-    if raw_values is None:
-        return None
-    values = [_normalize_single_proxy(item) for item in raw_values if item and item.strip()]
-    return ",".join(values)
 
 
 class FunPayProvider(MarketplaceProvider):
@@ -76,12 +43,28 @@ class FunPayProvider(MarketplaceProvider):
             return {}
         return raw_filters
 
-    def _build_client(self, filters: dict) -> FunPayClient:
+    @staticmethod
+    def _pick_proxy_list(filters: dict, common_filters: CommonFiltersDTO, key: str) -> list[str] | None:
+        raw_value = filters.get(key)
+        if isinstance(raw_value, list) and raw_value:
+            return raw_value
+        common_value = getattr(common_filters, key, None)
+        if isinstance(common_value, list) and common_value:
+            return common_value
+        return None
+
+    def _build_client(self, filters: dict, common_filters: CommonFiltersDTO) -> FunPayClient:
         return FunPayClient(
             settings=self.settings,
-            datacenter_proxies=_normalize_proxy_list(filters.get("datacenter_proxies")),
-            residential_proxies=_normalize_proxy_list(filters.get("residential_proxies")),
-            mobile_proxies=_normalize_proxy_list(filters.get("mobile_proxies")),
+            datacenter_proxies=normalize_proxy_list(
+                self._pick_proxy_list(filters, common_filters, "datacenter_proxies")
+            ),
+            residential_proxies=normalize_proxy_list(
+                self._pick_proxy_list(filters, common_filters, "residential_proxies")
+            ),
+            mobile_proxies=normalize_proxy_list(
+                self._pick_proxy_list(filters, common_filters, "mobile_proxies")
+            ),
         )
 
     def _build_legacy_request(self, common_filters: CommonFiltersDTO, filters: dict) -> AnalyzeRequestDTO:
@@ -95,9 +78,9 @@ class FunPayProvider(MarketplaceProvider):
             category_id=filters.get("category_id"),
             category_ids=filters.get("category_ids") or [],
             options=filters.get("options", {}),
-            datacenter_proxies=filters.get("datacenter_proxies"),
-            residential_proxies=filters.get("residential_proxies"),
-            mobile_proxies=filters.get("mobile_proxies"),
+            datacenter_proxies=self._pick_proxy_list(filters, common_filters, "datacenter_proxies"),
+            residential_proxies=self._pick_proxy_list(filters, common_filters, "residential_proxies"),
+            mobile_proxies=self._pick_proxy_list(filters, common_filters, "mobile_proxies"),
         )
 
     @staticmethod
@@ -150,7 +133,7 @@ class FunPayProvider(MarketplaceProvider):
         return [
             NormalizedReviewDTO(
                 marketplace=MarketplaceSlug.funpay,
-                seller_id=row.seller_id,
+                seller_id=str(row.seller_id),
                 detail=row.detail,
                 text=row.text,
                 rating=row.rating,
@@ -198,7 +181,7 @@ class FunPayProvider(MarketplaceProvider):
 
     def analyze(self, common_filters: CommonFiltersDTO, marketplace_filters: dict | None) -> MarketplaceRunResultDTO:
         filters = self._to_marketplace_filters(marketplace_filters)
-        client = self._build_client(filters)
+        client = self._build_client(filters, common_filters)
         analyzer = AnalyzerService(db=self.db, client=client, settings=self.settings)
         legacy_request = self._build_legacy_request(common_filters, filters)
         legacy_envelope = analyzer.analyze(legacy_request)
@@ -244,11 +227,16 @@ class FunPayProvider(MarketplaceProvider):
         core_offers = [
             NormalizedOfferDTO(
                 marketplace=MarketplaceSlug.funpay,
-                offer_id=item.offer_id,
+                offer_id=str(item.offer_id),
                 offer_url=item.offer_url,
-                section_id=item.section_id,
-                seller_id=item.seller_id,
+                section_id=(str(item.section_id) if item.section_id is not None else None),
+                seller_id=(str(item.seller_id) if item.seller_id is not None else None),
                 seller_name=item.seller_name,
+                seller_url=(
+                    f"https://funpay.com/users/{item.seller_id}/"
+                    if item.seller_id is not None
+                    else None
+                ),
                 description=item.description,
                 price=item.price,
                 currency=item.currency,
@@ -266,7 +254,11 @@ class FunPayProvider(MarketplaceProvider):
                 core_sellers.append(
                     NormalizedSellerDTO(
                         marketplace=MarketplaceSlug.funpay,
-                        seller_id=row.get("seller_id"),
+                        seller_id=(
+                            str(row.get("seller_id"))
+                            if row.get("seller_id") is not None
+                            else None
+                        ),
                         seller_name=str(row.get("seller_name", "")),
                         offers_count=int(row.get("offers_count", 0)),
                         min_price=row.get("min_price"),

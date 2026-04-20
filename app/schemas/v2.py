@@ -27,6 +27,9 @@ class CommonFiltersDTO(BaseModel):
     ui_locale: UiLocale = UiLocale.ru
     force_refresh: bool = False
     execution: V2ExecutionMode = V2ExecutionMode.auto
+    datacenter_proxies: list[str] | None = None
+    residential_proxies: list[str] | None = None
+    mobile_proxies: list[str] | None = None
 
 
 class FunPayFiltersDTO(BaseModel):
@@ -40,8 +43,22 @@ class FunPayFiltersDTO(BaseModel):
     mobile_proxies: list[str] | None = None
 
 
+class PlayerOkFiltersDTO(BaseModel):
+    category_game_slug: str | None = None
+    category_slugs: list[str] = Field(default_factory=list)
+    use_game_scope: bool = True
+    use_html_degrade: bool = True
+    advanced_headers: dict[str, str] | None = None
+    advanced_cookies: dict[str, str] | None = None
+    options: AnalyzeOptionsDTO = Field(default_factory=AnalyzeOptionsDTO)
+    datacenter_proxies: list[str] | None = None
+    residential_proxies: list[str] | None = None
+    mobile_proxies: list[str] | None = None
+
+
 class MarketplaceFiltersDTO(BaseModel):
     funpay: FunPayFiltersDTO | None = None
+    playerok: PlayerOkFiltersDTO | None = None
 
 
 class AnalyzeV2RequestDTO(BaseModel):
@@ -65,11 +82,12 @@ class ProgressV2DTO(BaseModel):
 
 class NormalizedOfferDTO(BaseModel):
     marketplace: MarketplaceSlug
-    offer_id: int
+    offer_id: str
     offer_url: str
-    section_id: int | None = None
-    seller_id: int | None = None
+    section_id: str | None = None
+    seller_id: str | None = None
     seller_name: str
+    seller_url: str | None = None
     description: str
     price: float
     currency: str
@@ -80,7 +98,7 @@ class NormalizedOfferDTO(BaseModel):
 
 class NormalizedSellerDTO(BaseModel):
     marketplace: MarketplaceSlug
-    seller_id: int | None = None
+    seller_id: str | None = None
     seller_name: str
     offers_count: int
     min_price: float | None = None
@@ -92,7 +110,7 @@ class NormalizedSellerDTO(BaseModel):
 
 class NormalizedReviewDTO(BaseModel):
     marketplace: MarketplaceSlug
-    seller_id: int
+    seller_id: str
     detail: str
     text: str
     rating: int | None = None
@@ -144,6 +162,8 @@ class MarketplaceSummaryDTO(BaseModel):
     category_game_id: int | None = None
     category_id: int | None = None
     category_ids: list[int] = Field(default_factory=list)
+    category_game_slug: str | None = None
+    category_slugs: list[str] = Field(default_factory=list)
     offers_stats: OffersStatsV2DTO
     coverage: CoverageV2DTO
     demand: DemandStatsV2DTO | None = None
@@ -236,6 +256,8 @@ class HistoryRunItemDTO(BaseModel):
     category_game_id: int | None = None
     category_id: int | None = None
     category_ids: list[int] = Field(default_factory=list)
+    category_game_slug: str | None = None
+    category_slugs: list[str] = Field(default_factory=list)
     pooled_matched_offers: int = 0
     pooled_unique_sellers: int = 0
     pooled_p50_price: float | None = None
@@ -245,3 +267,25 @@ class HistoryRunItemDTO(BaseModel):
 class HistoryV2ResponseDTO(BaseModel):
     generated_at: datetime
     items: list[HistoryRunItemDTO]
+
+
+class PlayerOkCategorySectionDTO(BaseModel):
+    section_id: str | None = None
+    section_slug: str
+    section_url: str
+    section_name: str
+    full_name: str
+
+
+class PlayerOkCategoryGameDTO(BaseModel):
+    game_id: str | None = None
+    game_slug: str
+    game_url: str
+    game_name: str
+    sections_loaded: bool = False
+    sections: list[PlayerOkCategorySectionDTO]
+
+
+class PlayerOkCategoriesResponseDTO(BaseModel):
+    generated_at: datetime
+    games: list[PlayerOkCategoryGameDTO]

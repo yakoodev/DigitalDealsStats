@@ -27,8 +27,9 @@ from app.schemas.v2 import (
     ProgressLogV2DTO,
     ProgressV2DTO,
 )
-from app.services.marketplaces.registry import MarketplaceRegistry
 from app.services.i18n import tr
+from app.services.marketplaces.registry import MarketplaceRegistry
+from app.services.text_utils import repair_mojibake_cyrillic
 
 
 class GlobalAnalyzerService:
@@ -247,10 +248,12 @@ class GlobalAnalyzerService:
 
         query = payload.common_filters.query
         currency = payload.common_filters.currency.value
+        marketplace_filters_payload = payload.marketplace_filters.model_dump(mode="json")
+        self._mask_sensitive_marketplace_filters(marketplace_filters_payload)
         request_filters_payload = {
             "marketplaces": [item.value for item in payload.marketplaces],
             "common_filters": payload.common_filters.model_dump(mode="json"),
-            "marketplace_filters": payload.marketplace_filters.model_dump(mode="json"),
+            "marketplace_filters": marketplace_filters_payload,
         }
         if row is None:
             row = AnalysisRequest(
@@ -291,6 +294,30 @@ class GlobalAnalyzerService:
         self.db.flush()
         return row
 
+    @staticmethod
+    def _mask_sensitive_map(raw: object) -> object:
+        if not isinstance(raw, dict):
+            return raw
+        masked: dict[str, object] = {}
+        for key, value in raw.items():
+            if isinstance(value, str) and value.strip():
+                masked[str(key)] = "***"
+            else:
+                masked[str(key)] = value
+        return masked
+
+    @classmethod
+    def _mask_sensitive_marketplace_filters(cls, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            return
+        playerok = payload.get("playerok")
+        if not isinstance(playerok, dict):
+            return
+        if "advanced_headers" in playerok:
+            playerok["advanced_headers"] = cls._mask_sensitive_map(playerok.get("advanced_headers"))
+        if "advanced_cookies" in playerok:
+            playerok["advanced_cookies"] = cls._mask_sensitive_map(playerok.get("advanced_cookies"))
+
     def create_queued_run(self, payload: AnalyzeV2RequestDTO) -> str:
         row = self._prepare_run_row(payload=payload, status="queued")
         ui_locale = payload.common_filters.ui_locale.value
@@ -313,15 +340,18 @@ class GlobalAnalyzerService:
     def is_heavy_request(payload: AnalyzeV2RequestDTO) -> bool:
         if len(payload.marketplaces) > 1:
             return True
-        funpay_filters = payload.marketplace_filters.funpay
-        if funpay_filters is None:
-            return False
-        options = funpay_filters.options
-        profile_value = options.profile.value if hasattr(options.profile, "value") else str(options.profile)
-        if profile_value == "deep":
-            return True
-        if options.include_reviews is True or options.include_demand_index is True:
-            return True
+        for slug in payload.marketplaces:
+            raw_filters = getattr(payload.marketplace_filters, slug.value, None)
+            if raw_filters is None:
+                continue
+            options = getattr(raw_filters, "options", None)
+            if options is None:
+                continue
+            profile_value = options.profile.value if hasattr(options.profile, "value") else str(options.profile)
+            if profile_value == "deep":
+                return True
+            if options.include_reviews is True or options.include_demand_index is True:
+                return True
         return False
 
     @classmethod
@@ -697,6 +727,11 @@ class GlobalAnalyzerService:
                 if isinstance(marketplace_filters, dict)
                 else None
             )
+            playerok_filters = (
+                marketplace_filters.get("playerok")
+                if isinstance(marketplace_filters, dict)
+                else None
+            )
             try:
                 overview = OverviewV2DTO.model_validate(overview_raw)
             except Exception:  # noqa: BLE001
@@ -723,7 +758,7 @@ class GlobalAnalyzerService:
             items.append(
                 HistoryRunItemDTO(
                     run_id=row.id,
-                    query=row.query,
+                    query=repair_mojibake_cyrillic(row.query),
                     currency=row.currency,
                     ui_locale=(common_filters.get("ui_locale", "ru") if isinstance(common_filters, dict) else "ru"),
                     generated_at=overview.generated_at,
@@ -747,6 +782,20 @@ class GlobalAnalyzerService:
                         if isinstance(funpay_filters, dict)
                         else []
                     ),
+                    category_game_slug=(
+                        playerok_filters.get("category_game_slug")
+                        if isinstance(playerok_filters, dict)
+                        else None
+                    ),
+                    category_slugs=(
+                        [
+                            str(item).strip()
+                            for item in (playerok_filters.get("category_slugs") or [])
+                            if str(item).strip()
+                        ]
+                        if isinstance(playerok_filters, dict)
+                        else []
+                    ),
                     pooled_matched_offers=overview.pooled_offers_stats.matched_offers,
                     pooled_unique_sellers=overview.pooled_offers_stats.unique_sellers,
                     pooled_p50_price=overview.pooled_offers_stats.p50_price,
@@ -758,3 +807,7 @@ class GlobalAnalyzerService:
     def funpay_categories(self):
         provider = self.registry.provider_for(MarketplaceSlug.funpay)
         return provider.categories()
+
+    def playerok_categories(self, game_slug: str | None = None):
+        provider = self.registry.provider_for(MarketplaceSlug.playerok)
+        return provider.categories(game_slug=game_slug)

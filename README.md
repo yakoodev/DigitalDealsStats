@@ -7,7 +7,7 @@
 - единый формат `Core + raw` для сравнения между площадками;
 - отдельные страницы UI: общий overview и детализация по площадке.
 
-Сейчас реализован только `funpay`, но API/UI уже готовы для добавления `playerok`, `ggsell`, `platimarket`.
+Сейчас реализованы `funpay` и `playerok`; `ggsell` и `platimarket` остаются в каталоге как disabled.
 
 ## Что уже работает
 
@@ -16,6 +16,12 @@
   - `summary`,
   - `core` (normalized offers/sellers/reviews),
   - `raw` (полный legacy payload FunPay).
+- `PlayerOkProvider`:
+  - GraphQL-first сбор (`/graphql`) через обычный HTTP,
+  - HTML degrade как fallback (без browser emulation),
+  - lower-bound диагностика покрытия,
+  - анализ спроса по отзывам с матчингом `игра + цена`,
+  - кэш результатов на 24 часа.
 - `GlobalAnalyzerService`:
   - запуск анализа по выбранным площадкам,
   - расчет pooled overview + comparison + averages,
@@ -29,10 +35,12 @@
   - `GET /v2/history`
   - `GET /v2/marketplaces`
   - `GET /v2/marketplaces/funpay/categories`
+  - `GET /v2/marketplaces/playerok/categories`
 - UI:
   - `/` — overview общего анализа,
   - `/analysis/funpay` — детальная страница FunPay,
-  - список площадок с disabled статусом для еще не реализованных провайдеров,
+  - `/analysis/playerok` — детальная страница PlayerOK,
+  - общий выбор площадок + общий пул прокси в форме запуска,
   - история запусков с подпунктами по площадкам.
 
 ## Быстрый старт
@@ -74,12 +82,15 @@ curl http://localhost:8000/v2/marketplaces
 
 ```json
 {
-  "marketplaces": ["funpay"],
+  "marketplaces": ["funpay", "playerok"],
   "common_filters": {
     "query": "project zomboid аренда",
     "currency": "RUB",
     "force_refresh": false,
-    "execution": "auto"
+    "execution": "auto",
+    "datacenter_proxies": [],
+    "residential_proxies": [],
+    "mobile_proxies": []
   },
   "marketplace_filters": {
     "funpay": {
@@ -94,6 +105,24 @@ curl http://localhost:8000/v2/marketplaces
         "section_limit": 80,
         "seller_limit": 40,
         "review_pages_per_seller": 4,
+        "history_points_limit": 60
+      }
+    },
+    "playerok": {
+      "category_game_slug": "project-zomboid",
+      "category_slugs": ["project-zomboid/rent"],
+      "use_game_scope": true,
+      "use_html_degrade": true,
+      "advanced_headers": {},
+      "advanced_cookies": {},
+      "options": {
+        "profile": "balanced",
+        "include_reviews": true,
+        "include_demand_index": true,
+        "include_fallback_scan": true,
+        "section_limit": 80,
+        "seller_limit": 3,
+        "review_pages_per_seller": 3,
         "history_points_limit": 60
       }
     }

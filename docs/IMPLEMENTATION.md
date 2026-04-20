@@ -5,7 +5,7 @@
 Продукт переведен на провайдерную архитектуру:
 
 - `MarketplaceProvider` — единый контракт площадки;
-- `FunPayProvider` — первый реализованный провайдер;
+- `FunPayProvider` и `PlayerOkProvider` — реализованные провайдеры;
 - `GlobalAnalyzerService` — оркестратор мульти-площадочного запуска.
 
 ## Data shape
@@ -34,6 +34,7 @@
 - `GET /v2/history`
 - `GET /v2/marketplaces`
 - `GET /v2/marketplaces/funpay/categories`
+- `GET /v2/marketplaces/playerok/categories`
 
 Для не реализованных площадок возвращается явная ошибка:
 
@@ -42,9 +43,9 @@
 ## UI routing
 
 - `/` — общий анализ (overview);
-- `/analysis/{marketplace}` — детальная страница площадки (сейчас `funpay`).
+- `/analysis/{marketplace}` — детальная страница площадки (сейчас `funpay` и `playerok`).
 
 ## Current scope
 
-- Реализован только провайдер FunPay.
-- `playerok`, `ggsell`, `platimarket` отображаются в UI/API каталоге как disabled.
+- Реализованы провайдеры `funpay` и `playerok`.
+- `ggsell`, `platimarket` отображаются в UI/API каталоге как disabled.
