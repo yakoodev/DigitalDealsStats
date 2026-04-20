@@ -448,8 +448,9 @@
 
     <div class="layout">
       <section class="panel">
-        <div class="head">Фильтры запуска</div>
+        <div class="head" id="formHead">Фильтры запуска</div>
         <div class="body">
+          <div id="formModeNotice" class="status hidden"></div>
           <div class="grid">
             <div class="full">
               <label for="query">Запрос</label>
@@ -474,14 +475,31 @@
               </select>
             </div>
 
-            <div class="full">
+            <div id="marketplaceSelectBlock" class="full">
               <label>Площадки</label>
               <div id="marketplaceChecks" class="checks"></div>
             </div>
+            <div id="singleMarketplaceHint" class="full hidden">
+              <div class="card">
+                <div class="name">Режим запуска</div>
+                <div class="value" style="font-size:15px;">Только FunPay (страница площадки)</div>
+              </div>
+            </div>
           </div>
 
+          <div id="funpayFiltersContainer">
           <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">FunPay фильтры</div>
           <div class="grid">
+            <div class="full hidden" id="fpQuickPresetBlock">
+              <label for="fpQuickPreset">Быстрый пресет FunPay</label>
+              <select id="fpQuickPreset">
+                <option value="custom" selected>custom (ручная настройка)</option>
+                <option value="safe_fast">safe fast (быстрый срез)</option>
+                <option value="balanced_market">balanced market (рыночный обзор)</option>
+                <option value="deep_demand">deep demand (углубленный спрос)</option>
+              </select>
+              <div class="hint">Пресет автоматически изменяет профиль и параметры отзывов/обхода.</div>
+            </div>
             <div>
               <label for="fpContentLocale">Локаль контента</label>
               <select id="fpContentLocale">
@@ -548,6 +566,7 @@
               <label for="fpMobProxy">Mobile</label>
               <textarea id="fpMobProxy" placeholder="http://user:pass@ip:port"></textarea>
             </div>
+          </div>
           </div>
 
           <div class="actions">
@@ -759,6 +778,7 @@
     const routePath = window.location.pathname;
     const isMarketplaceRoute = routePath.startsWith("/analysis/");
     const activeMarketplace = isMarketplaceRoute ? routePath.split("/")[2] : null;
+    const isFunPayRoute = isMarketplaceRoute && activeMarketplace === "funpay";
 
     const chartState = {
       price: { bins: [], bars: [], hoverIndex: -1, canvas: $("marketPriceCanvas") },
@@ -885,6 +905,86 @@
     function routeVisibility() {
       overviewPage.classList.toggle("hidden", isMarketplaceRoute);
       marketplacePage.classList.toggle("hidden", !isMarketplaceRoute);
+    }
+
+    function applyFunPayPreset(preset) {
+      if (preset === "safe_fast") {
+        $("fpProfile").value = "safe";
+        $("fpIncludeReviews").checked = false;
+        $("fpIncludeDemand").checked = false;
+        $("fpIncludeFallback").checked = false;
+        $("fpSectionLimit").value = "40";
+        $("fpSellerLimit").value = "10";
+        $("fpReviewPages").value = "1";
+        return;
+      }
+      if (preset === "balanced_market") {
+        $("fpProfile").value = "balanced";
+        $("fpIncludeReviews").checked = true;
+        $("fpIncludeDemand").checked = false;
+        $("fpIncludeFallback").checked = true;
+        $("fpSectionLimit").value = "120";
+        $("fpSellerLimit").value = "30";
+        $("fpReviewPages").value = "2";
+        return;
+      }
+      if (preset === "deep_demand") {
+        $("fpProfile").value = "deep";
+        $("fpIncludeReviews").checked = true;
+        $("fpIncludeDemand").checked = true;
+        $("fpIncludeFallback").checked = true;
+        $("fpSectionLimit").value = "200";
+        $("fpSellerLimit").value = "60";
+        $("fpReviewPages").value = "4";
+      }
+    }
+
+    function applyFormMode() {
+      const formHead = $("formHead");
+      const formModeNotice = $("formModeNotice");
+      const marketBlock = $("marketplaceSelectBlock");
+      const singleHint = $("singleMarketplaceHint");
+      const fpPresetBlock = $("fpQuickPresetBlock");
+      const runBtn = $("runBtn");
+      const funpayFilters = $("funpayFiltersContainer");
+
+      runBtn.disabled = false;
+      funpayFilters.classList.remove("hidden");
+
+      if (isFunPayRoute) {
+        formHead.textContent = "Запуск анализа FunPay";
+        formModeNotice.className = "status ok";
+        formModeNotice.textContent = "Режим страницы площадки: запускается только FunPay, без выбора других площадок.";
+        formModeNotice.classList.remove("hidden");
+        marketBlock.classList.add("hidden");
+        singleHint.classList.remove("hidden");
+        fpPresetBlock.classList.remove("hidden");
+        runBtn.textContent = "Запустить анализ FunPay";
+        return;
+      }
+
+      if (isMarketplaceRoute && activeMarketplace !== "funpay") {
+        formHead.textContent = "Запуск анализа площадки";
+        formModeNotice.className = "status err";
+        formModeNotice.textContent = `Площадка "${activeMarketplace}" пока не реализована. Запуск недоступен.`;
+        formModeNotice.classList.remove("hidden");
+        marketBlock.classList.add("hidden");
+        singleHint.classList.add("hidden");
+        fpPresetBlock.classList.add("hidden");
+        funpayFilters.classList.add("hidden");
+        runBtn.textContent = "Запуск недоступен";
+        runBtn.disabled = true;
+        return;
+      }
+
+      formHead.textContent = "Фильтры общего запуска";
+      formModeNotice.className = "status warn";
+      formModeNotice.textContent = "Мульти-площадочный режим: выберите площадки для общего анализа. Для детального запуска FunPay используйте страницу FunPay.";
+      formModeNotice.classList.remove("hidden");
+      marketBlock.classList.remove("hidden");
+      singleHint.classList.add("hidden");
+      fpPresetBlock.classList.add("hidden");
+      runBtn.textContent = "Запустить общий анализ";
     }
 
     function renderProgress(envelope) {
@@ -1398,6 +1498,9 @@
     }
 
     function selectMarketplaceValues() {
+      if (isFunPayRoute) {
+        return ["funpay"];
+      }
       const checked = Array.from(document.querySelectorAll("input[name='marketplace']:checked"))
         .map((item) => item.value);
       return checked;
@@ -1703,6 +1806,13 @@
       $("historyQueryFilter").addEventListener("input", renderHistory);
       $("historyMarketplaceFilter").addEventListener("change", renderHistory);
       runIdInput.addEventListener("input", updateNavLinks);
+      $("fpQuickPreset").addEventListener("change", (event) => {
+        const preset = String(event.target.value || "custom");
+        if (preset !== "custom") {
+          applyFunPayPreset(preset);
+          setStatus(`Применен пресет FunPay: ${preset}`, "ok");
+        }
+      });
       $("copyRunIdBtn").addEventListener("click", async () => {
         const runId = runIdInput.value.trim() || selectedRunId || "";
         if (!runId) {
@@ -1768,6 +1878,7 @@
 
     async function bootstrap() {
       routeVisibility();
+      applyFormMode();
       attachEvents();
       try {
         const urlRunId = new URLSearchParams(window.location.search).get("run_id");
