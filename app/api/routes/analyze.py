@@ -20,6 +20,7 @@ from app.schemas.analyze import (
 )
 from app.services.analyzer import AnalyzerService
 from app.services.funpay_client import FunPayClient, GameCategory
+from app.services.i18n import tr
 
 router = APIRouter(prefix="/v1", tags=["analyze"])
 
@@ -109,10 +110,15 @@ def analyze(
 ) -> AnalyzeEnvelopeDTO:
     settings = get_settings()
     payload.query = payload.query.strip()
-    if not payload.query and payload.category_id is None and payload.category_game_id is None:
+    if (
+        not payload.query
+        and payload.category_id is None
+        and payload.category_game_id is None
+        and len(payload.category_ids) == 0
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Пустой запрос разрешен только при выбранной игре или разделе категории.",
+            detail=tr(payload.ui_locale.value, "validation.empty_query_requires_scope"),
         )
     options_probe_client = _build_funpay_client(payload)
     service = AnalyzerService(db=db, client=options_probe_client, settings=settings)
@@ -122,6 +128,7 @@ def analyze(
             payload.options,
             category_game_id=payload.category_game_id,
             category_id=payload.category_id,
+            category_ids=payload.category_ids,
         )
         has_valid_cache = (not payload.force_refresh) and service.has_valid_cache(payload, options)
 

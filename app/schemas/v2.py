@@ -5,7 +5,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from app.schemas.analyze import AnalyzeOptionsDTO, ContentLocale, Currency
+from app.schemas.analyze import AnalyzeOptionsDTO, ContentLocale, Currency, UiLocale
 
 
 class V2ExecutionMode(str, Enum):
@@ -24,6 +24,7 @@ class MarketplaceSlug(str, Enum):
 class CommonFiltersDTO(BaseModel):
     query: str = Field(default="", min_length=0, max_length=512)
     currency: Currency = Currency.rub
+    ui_locale: UiLocale = UiLocale.ru
     force_refresh: bool = False
     execution: V2ExecutionMode = V2ExecutionMode.auto
 
@@ -32,6 +33,7 @@ class FunPayFiltersDTO(BaseModel):
     content_locale: ContentLocale = ContentLocale.auto
     category_game_id: int | None = Field(default=None, ge=1)
     category_id: int | None = Field(default=None, ge=1)
+    category_ids: list[int] = Field(default_factory=list)
     options: AnalyzeOptionsDTO = Field(default_factory=AnalyzeOptionsDTO)
     datacenter_proxies: list[str] | None = None
     residential_proxies: list[str] | None = None
@@ -116,6 +118,10 @@ class DemandStatsV2DTO(BaseModel):
     volume_30d: int
     demand_index: float | None = None
     unique_sellers_with_relevant_reviews: int
+    estimated_purchases_total: int = 0
+    estimated_purchases_30d: int = 0
+    sellers_analyzed: int = 0
+    reviews_scanned: int = 0
 
 
 class CoverageV2DTO(BaseModel):
@@ -132,8 +138,12 @@ class MarketplaceSummaryDTO(BaseModel):
     generated_at: datetime
     valid_until: datetime
     cache_hit: bool = False
+    ui_locale: UiLocale = UiLocale.ru
     content_locale_requested: str | None = None
     content_locale_applied: str | None = None
+    category_game_id: int | None = None
+    category_id: int | None = None
+    category_ids: list[int] = Field(default_factory=list)
     offers_stats: OffersStatsV2DTO
     coverage: CoverageV2DTO
     demand: DemandStatsV2DTO | None = None
@@ -220,8 +230,12 @@ class HistoryRunItemDTO(BaseModel):
     run_id: str
     query: str
     currency: Currency
+    ui_locale: UiLocale = UiLocale.ru
     generated_at: datetime
     marketplaces: list[MarketplaceSlug]
+    category_game_id: int | None = None
+    category_id: int | None = None
+    category_ids: list[int] = Field(default_factory=list)
     pooled_matched_offers: int = 0
     pooled_unique_sellers: int = 0
     pooled_p50_price: float | None = None

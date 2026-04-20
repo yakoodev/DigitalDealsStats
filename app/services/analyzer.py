@@ -46,9 +46,11 @@ from app.schemas.analyze import (
     SectionRowDTO,
     TablesDTO,
     TopOfferDTO,
+    TopDemandSellerDTO,
     TopSellerDTO,
 )
 from app.services.funpay_client import FunPayClient, OfferData, ReviewData
+from app.services.i18n import tr
 from app.services.text_utils import (
     is_text_relevant,
     meaningful_query_tokens,
@@ -62,16 +64,36 @@ from app.services.text_utils import (
 class CoverageRow:
     section_url: str
     section_id: int | None
+    section_name: str | None
     counter_total: int | None
     loaded_count: int
     coverage_status: str
+
+
+@dataclass
+class ReviewMatchDiagnostics:
+    sellers_targeted: int = 0
+    sellers_analyzed: int = 0
+    failed_sellers: int = 0
+    reviews_scanned: int = 0
+    no_game_match: int = 0
+    no_amount: int = 0
+    no_price_match: int = 0
+
+
+@dataclass
+class SellerDemandStat:
+    seller_id: int | None
+    seller_name: str
+    reviews_scanned: int
+    estimated_purchases_total: int
+    estimated_purchases_30d: int
 
 
 ProgressCallback = Callable[[str, float | None, str], None]
 
 
 class AnalyzerService:
-    STRICT_FALLBACK_SELLERS = 5
     REVIEW_TOKEN_STOPWORDS = {
         "edition",
         "standard",
@@ -213,13 +235,15 @@ class AnalyzerService:
         raw: AnalyzeOptionsDTO,
         category_game_id: int | None = None,
         category_id: int | None = None,
+        category_ids: list[int] | None = None,
     ) -> EffectiveAnalyzeOptionsDTO:
+        default_seller_limit = 3
         if raw.profile == AnalyzeProfile.safe:
             include_reviews = False
             include_demand_index = False
             include_fallback_scan = False
             section_limit = min(self.settings.quick_sections_limit, 40)
-            seller_limit = min(self.settings.demand_max_sellers, 10)
+            seller_limit = default_seller_limit
             review_pages_per_seller = 1
             history_points_limit = 30
         elif raw.profile == AnalyzeProfile.deep:
@@ -227,7 +251,7 @@ class AnalyzerService:
             include_demand_index = True
             include_fallback_scan = True
             section_limit = max(self.settings.fallback_sections_limit, self.settings.quick_sections_limit)
-            seller_limit = max(self.settings.demand_max_sellers, 80)
+            seller_limit = default_seller_limit
             review_pages_per_seller = max(self.settings.review_max_pages_per_seller, 8)
             history_points_limit = 120
         else:
@@ -235,7 +259,7 @@ class AnalyzerService:
             include_demand_index = False
             include_fallback_scan = True
             section_limit = self.settings.quick_sections_limit
-            seller_limit = self.settings.demand_max_sellers
+            seller_limit = default_seller_limit
             review_pages_per_seller = self.settings.review_max_pages_per_seller
             history_points_limit = 60
 
@@ -253,6 +277,8 @@ class AnalyzerService:
             review_pages_per_seller = raw.review_pages_per_seller
         if raw.history_points_limit is not None:
             history_points_limit = raw.history_points_limit
+
+        seller_limit = max(1, min(20, seller_limit))
 
         if include_demand_index:
             include_reviews = True
@@ -272,6 +298,7 @@ class AnalyzerService:
             "mode_label": mode_label,
             "category_game_id": category_game_id,
             "category_id": category_id,
+            "category_ids": sorted(set(category_ids or [])),
         }
         options_hash = hashlib.sha256(
             json.dumps(options_payload, sort_keys=True, ensure_ascii=True).encode("utf-8")
@@ -304,9 +331,10 @@ class AnalyzerService:
         currency: str,
         options_hash: str,
         content_locale_key: str,
+        ui_locale_key: str,
     ) -> str:
         normalized = normalize_text(query)
-        raw = f"v7|{currency}|{options_hash}|{content_locale_key}|{normalized}"
+        raw = f"v8|{currency}|{options_hash}|{content_locale_key}|{ui_locale_key}|{normalized}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     @staticmethod
@@ -397,110 +425,140 @@ class AnalyzerService:
         if not offers:
             return []
         token_counter: Counter[str] = Counter()
-        offers_count = len(offers)
         for offer in offers:
             tokens = set(tokenize(offer.description))
-            meaningful = meaningful_query_tokens(token for token in tokens if len(token) >= 3)
-            for token in meaningful:
+            for token in meaningful_query_tokens(token for token in tokens if len(token) >= 3):
                 if token in self.REVIEW_TOKEN_STOPWORDS:
                     continue
                 if not re.search(r"[a-zа-яё]", token):
                     continue
+                if re.fullmatch(r"\d+", token):
+                    continue
                 token_counter[token] += 1
-
         picked: list[str] = []
-        for token, freq in token_counter.most_common():
-            share = freq / offers_count
-            if freq >= 3 and share >= 0.08:
-                picked.append(token)
-            if len(picked) >= 3:
+        for token, _ in token_counter.most_common(20):
+            picked.append(token)
+            if len(picked) >= 8:
                 break
         return picked
 
-    def _review_relevance_tokens(
-        self,
-        query: str,
-        offers: list[OfferData],
-        category_game_id: int | None,
-        category_id: int | None,
-    ) -> tuple[list[str], bool]:
-        qtokens = query_tokens(query)
-        meaningful = meaningful_query_tokens(qtokens)
-        review_meaningful = [
-            token
-            for token in meaningful
-            if token not in self.REVIEW_TOKEN_STOPWORDS
-            and re.search(r"[a-zа-яё]", token)
-            and not re.fullmatch(r"\d+[a-zа-яё]*", token)
-        ]
-        if review_meaningful:
-            return qtokens, False
-
-        if category_game_id is None and category_id is None:
-            return qtokens, False
-
-        derived = self._derive_review_tokens_from_offers(offers)
-        if derived:
-            return derived, True
-        return qtokens, False
-
     @staticmethod
-    def _is_fallback_review_relevant(review: ReviewData, token_list: list[str]) -> bool:
-        if not token_list:
-            return False
-        detail_tokens = set(tokenize(review.detail))
-        if not detail_tokens:
-            return False
-        return any(token in detail_tokens for token in token_list)
-
-    @staticmethod
-    def _extract_amount_from_text(value: str) -> float | None:
-        normalized = value.replace(" ", "").replace(",", ".")
-        match = re.search(r"\d+(?:\.\d+)?", normalized)
-        if not match:
-            return None
-        try:
-            return float(match.group(0))
-        except ValueError:
-            return None
+    def _extract_amounts_from_text(value: str) -> list[float]:
+        if not value:
+            return []
+        normalized = value.replace("\xa0", " ").replace(",", ".")
+        matches = re.findall(
+            r"(\d+(?:\.\d+)?)\s*(?:₽|руб(?:\.|ля|лей)?|rub|usd|\$|eur|€)?",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        amounts: list[float] = []
+        for raw in matches:
+            try:
+                amounts.append(float(raw))
+            except ValueError:
+                continue
+        return amounts
 
     @staticmethod
     def _is_amount_close_to_seller_prices(amount: float, seller_prices: list[float]) -> bool:
         for price in seller_prices:
             if price <= 0:
                 continue
-            # Отзывы могут содержать округление, а цены меняться со временем:
-            # используем мягкий порог по абсолютной и относительной разнице.
             if abs(amount - price) <= max(2.0, price * 0.40):
                 return True
         return False
 
-    def _is_top_seller_review_relevant(
+    @staticmethod
+    def _is_this_month_bucket(value: str | None) -> bool:
+        normalized = (value or "").strip().lower()
+        return normalized in {"this month", "в этом месяце"}
+
+    @staticmethod
+    def _normalized_category_ids(
+        category_id: int | None,
+        category_ids: list[int] | None,
+    ) -> list[int]:
+        seen: set[int] = set()
+        result: list[int] = []
+        if category_id is not None and category_id > 0:
+            seen.add(category_id)
+            result.append(category_id)
+        for item in category_ids or []:
+            value = int(item)
+            if value <= 0 or value in seen:
+                continue
+            seen.add(value)
+            result.append(value)
+        return result
+
+    def _category_tokens(
+        self,
+        category_game_id: int | None,
+        category_ids: list[int],
+    ) -> tuple[list[str], dict[int, str]]:
+        if category_game_id is None and not category_ids:
+            return [], {}
+        try:
+            games = self.client.get_categories_catalog()
+        except Exception:  # noqa: BLE001
+            return [], {}
+
+        tokens: set[str] = set()
+        section_name_map: dict[int, str] = {}
+
+        def add_tokens_from_text(text_value: str) -> None:
+            for token in meaningful_query_tokens(tokenize(text_value)):
+                if len(token) < 3:
+                    continue
+                if token in self.REVIEW_TOKEN_STOPWORDS:
+                    continue
+                if not re.search(r"[a-zа-яё]", token):
+                    continue
+                tokens.add(token)
+
+        for game in games:
+            section_name_map[game.game_section_id] = game.game_name
+            if category_game_id is not None and game.game_section_id == category_game_id:
+                add_tokens_from_text(game.game_name)
+
+            for section in game.sections:
+                section_name_map[section.section_id] = section.full_name
+                if category_game_id is not None and game.game_section_id == category_game_id:
+                    add_tokens_from_text(section.full_name)
+                if section.section_id in category_ids:
+                    add_tokens_from_text(section.full_name)
+
+        return sorted(tokens), section_name_map
+
+    def _is_review_matching_purchase(
         self,
         review: ReviewData,
-        fallback_tokens: list[str],
         seller_offers: list[OfferData],
-    ) -> bool:
-        if not self._is_fallback_review_relevant(review, fallback_tokens):
-            return False
-
-        seller_game_tokens = self._derive_review_tokens_from_offers(seller_offers) or fallback_tokens
+        category_tokens: list[str],
+    ) -> tuple[bool, str | None]:
         detail_tokens = set(tokenize(review.detail))
         if not detail_tokens:
-            return False
+            return False, "no_game_match"
 
-        game_overlap = [token for token in seller_game_tokens if token in detail_tokens]
-        required_overlap = 1
-        if len(game_overlap) < required_overlap:
-            return False
+        seller_tokens = set(self._derive_review_tokens_from_offers(seller_offers))
+        all_game_tokens = sorted(seller_tokens | set(category_tokens))
+        if not all_game_tokens:
+            return False, "no_game_match"
+        if not any(token in detail_tokens for token in all_game_tokens):
+            return False, "no_game_match"
 
-        amount = self._extract_amount_from_text(review.detail)
-        if amount is None:
-            return False
-        seller_prices = [offer.price for offer in seller_offers if offer.price is not None]
+        amounts = self._extract_amounts_from_text(review.detail)
+        if not amounts:
+            return False, "no_amount"
+
+        seller_prices = [float(offer.price) for offer in seller_offers if offer.price is not None and offer.price > 0]
         if not seller_prices:
-            return False
-        return self._is_amount_close_to_seller_prices(amount, seller_prices)
+            return False, "no_price_match"
+        for amount in amounts:
+            if self._is_amount_close_to_seller_prices(amount, seller_prices):
+                return True, None
+        return False, "no_price_match"
 
     def has_valid_cache(self, request_dto: AnalyzeRequestDTO, options: EffectiveAnalyzeOptionsDTO) -> bool:
         cache_key = self._cache_key(
@@ -508,6 +566,7 @@ class AnalyzerService:
             request_dto.currency.value,
             options.options_hash,
             request_dto.content_locale.value,
+            request_dto.ui_locale.value,
         )
         now = datetime.now(UTC)
         cached = self.db.scalar(
@@ -593,6 +652,8 @@ class AnalyzerService:
     def compute_demand_stats(
         relevant_reviews: list[ReviewData],
         include_index: bool,
+        sellers_analyzed: int = 0,
+        reviews_scanned: int = 0,
     ) -> DemandStatsDTO:
         if not relevant_reviews:
             return DemandStatsDTO(
@@ -601,6 +662,10 @@ class AnalyzerService:
                 volume_30d=0,
                 demand_index=0.0 if include_index else None,
                 unique_sellers_with_relevant_reviews=0,
+                estimated_purchases_total=0,
+                estimated_purchases_30d=0,
+                sellers_analyzed=sellers_analyzed,
+                reviews_scanned=reviews_scanned,
             )
 
         rated_reviews = [review for review in relevant_reviews if review.rating is not None]
@@ -610,7 +675,7 @@ class AnalyzerService:
         volume_30d = sum(
             1
             for review in relevant_reviews
-            if (review.date_bucket or "").strip().lower() in {"this month", "в этом месяце"}
+            if AnalyzerService._is_this_month_bucket(review.date_bucket)
         )
         unique_sellers = len({review.seller_id for review in relevant_reviews})
 
@@ -626,6 +691,10 @@ class AnalyzerService:
             volume_30d=volume_30d,
             demand_index=demand_index,
             unique_sellers_with_relevant_reviews=unique_sellers,
+            estimated_purchases_total=len(relevant_reviews),
+            estimated_purchases_30d=volume_30d,
+            sellers_analyzed=sellers_analyzed,
+            reviews_scanned=reviews_scanned,
         )
 
     def _get_cached_result(self, cache_key: str) -> AnalyzeResultDTO | None:
@@ -674,7 +743,12 @@ class AnalyzerService:
             )
         )
 
-    def _persist_request_done(self, request_row: AnalysisRequest, envelope: AnalyzeEnvelopeDTO) -> None:
+    def _persist_request_done(
+        self,
+        request_row: AnalysisRequest,
+        envelope: AnalyzeEnvelopeDTO,
+        ui_locale: str = "ru",
+    ) -> None:
         payload = self._read_progress_payload(request_row)
         progress = payload["progress"]
         logs = progress.get("logs", [])
@@ -682,12 +756,12 @@ class AnalyzerService:
             {
                 "ts": self._utc_iso(),
                 "stage": "done",
-                "message": "Анализ завершён успешно.",
+                "message": tr(ui_locale, "progress.local.done.log"),
             }
         )
         progress["percent"] = 100.0
         progress["stage"] = "done"
-        progress["message"] = "Анализ завершён."
+        progress["message"] = tr(ui_locale, "progress.local.done")
         progress["logs"] = logs[-200:]
         payload["progress"] = progress
         payload["cache_hit"] = envelope.cache_hit
@@ -697,7 +771,7 @@ class AnalyzerService:
         request_row.error_text = None
         request_row.updated_at = datetime.now(UTC)
 
-    def _persist_request_error(self, request_row: AnalysisRequest, error_text: str) -> None:
+    def _persist_request_error(self, request_row: AnalysisRequest, error_text: str, ui_locale: str = "ru") -> None:
         payload = self._read_progress_payload(request_row)
         progress = payload["progress"]
         logs = progress.get("logs", [])
@@ -705,11 +779,11 @@ class AnalyzerService:
             {
                 "ts": self._utc_iso(),
                 "stage": "failed",
-                "message": f"Ошибка: {error_text}",
+                "message": f"{tr(ui_locale, 'error.prefix')}: {error_text}",
             }
         )
         progress["stage"] = "failed"
-        progress["message"] = "Анализ завершился с ошибкой."
+        progress["message"] = tr(ui_locale, "progress.local.failed")
         progress["logs"] = logs[-200:]
         payload["progress"] = progress
         request_row.status = "failed"
@@ -775,6 +849,7 @@ class AnalyzerService:
             request_dto.options,
             category_game_id=request_dto.category_game_id,
             category_id=request_dto.category_id,
+            category_ids=request_dto.category_ids,
         )
         row = self._prepare_request_row(
             request_dto=request_dto,
@@ -785,7 +860,7 @@ class AnalyzerService:
             row,
             percent=1,
             stage="queued",
-            message="Задача поставлена в очередь.",
+            message=tr(request_dto.ui_locale.value, "progress.local.queued"),
             append_log=True,
             commit=False,
         )
@@ -829,7 +904,21 @@ class AnalyzerService:
                 )
             )
 
-    def _persist_reviews(self, request_id: str, reviews: list[ReviewData], query_token_list: list[str]) -> None:
+    @staticmethod
+    def _review_key(review: ReviewData) -> tuple[int, str, str, str | None]:
+        return (
+            int(review.seller_id),
+            normalize_text(review.detail),
+            normalize_text(review.text),
+            (review.date_bucket or "").strip().lower() or None,
+        )
+
+    def _persist_reviews(
+        self,
+        request_id: str,
+        reviews: list[ReviewData],
+        relevant_keys: set[tuple[int, str, str, str | None]],
+    ) -> None:
         for review in reviews[:10000]:
             self.db.add(
                 ReviewSnapshot(
@@ -839,7 +928,7 @@ class AnalyzerService:
                     text=review.text,
                     rating=review.rating,
                     date_bucket=review.date_bucket,
-                    is_relevant=is_text_relevant(review.detail, query_token_list),
+                    is_relevant=self._review_key(review) in relevant_keys,
                 )
             )
 
@@ -871,26 +960,40 @@ class AnalyzerService:
         content_locale: str,
         category_game_id: int | None = None,
         category_id: int | None = None,
+        category_ids: list[int] | None = None,
+        section_name_map: dict[int, str] | None = None,
+        ui_locale: str = "ru",
         progress: ProgressCallback | None = None,
     ) -> tuple[list[OfferData], list[CoverageRow], int]:
         token_list = query_tokens(query)
         meaningful_tokens = meaningful_query_tokens(token_list)
         has_query_filter = bool(token_list)
         weak_filtered_offers = 0
-        category_scope_applied = category_id is not None or category_game_id is not None
+        selected_category_ids = self._normalized_category_ids(category_id, category_ids)
+        category_scope_applied = bool(selected_category_ids) or category_game_id is not None
 
-        if category_id is not None:
-            quick_sections = [self.client.section_url(category_id, locale=content_locale)]
-        elif category_game_id is not None:
-            quick_sections = [
+        quick_sections: list[str] = []
+        if category_game_id is not None:
+            quick_sections.extend(
                 self._rewrite_url_locale(url, content_locale)
                 for url in self.client.get_game_section_urls(category_game_id)
-            ]
-        else:
+            )
+        for section_id in selected_category_ids:
+            quick_sections.append(self.client.section_url(section_id, locale=content_locale))
+        if not category_scope_applied:
             quick_sections = [
                 self._rewrite_url_locale(url, content_locale)
                 for url in self.client.search_sections(query)
             ]
+
+        dedup_sections: list[str] = []
+        seen_sections: set[str] = set()
+        for url in quick_sections:
+            if url in seen_sections:
+                continue
+            seen_sections.add(url)
+            dedup_sections.append(url)
+        quick_sections = dedup_sections
 
         scanned: set[str] = set()
         matched_offers: dict[int, OfferData] = {}
@@ -898,7 +1001,7 @@ class AnalyzerService:
         locale_hint = "RU" if content_locale == "ru" else "EN"
         if progress:
             progress(
-                f"Сформирован список разделов: {len(quick_sections)} ({locale_hint})",
+                tr(ui_locale, "progress.local.sections.prepared", count=len(quick_sections), locale_hint=locale_hint),
                 14,
                 "sections",
             )
@@ -916,16 +1019,26 @@ class AnalyzerService:
                 processed += 1
                 if progress:
                     progress(
-                        f"Проверяю раздел {processed}/{max(total_target, 1)}: {section_url}",
+                        tr(
+                            ui_locale,
+                            "progress.local.section.scan",
+                            processed=processed,
+                            total=max(total_target, 1),
+                            section_url=section_url,
+                        ),
                         15 + min(20.0, processed * 0.6),
                         "section",
                     )
                 parsed = self.client.parse_section(section_url)
                 status = self.coverage_status(parsed.counter_total, parsed.loaded_count)
+                section_name = None
+                if parsed.section_id is not None and section_name_map:
+                    section_name = section_name_map.get(parsed.section_id)
                 coverage_rows.append(
                     CoverageRow(
                         section_url=parsed.section_url,
                         section_id=parsed.section_id,
+                        section_name=section_name,
                         counter_total=parsed.counter_total,
                         loaded_count=parsed.loaded_count,
                         coverage_status=status,
@@ -933,9 +1046,11 @@ class AnalyzerService:
                 )
                 if progress:
                     progress(
-                        (
-                            f"Раздел проверен: найдено {parsed.loaded_count} лотов "
-                            f"(counter={parsed.counter_total or 'n/a'})"
+                        tr(
+                            ui_locale,
+                            "progress.local.section.done",
+                            loaded_count=parsed.loaded_count,
+                            counter_total=parsed.counter_total if parsed.counter_total is not None else "n/a",
                         ),
                         17 + min(23.0, processed * 0.7),
                         "section",
@@ -955,7 +1070,7 @@ class AnalyzerService:
             scan_sections(quick_sections, scan_limit)
             if progress:
                 progress(
-                    f"Разделы в выбранной категории обработаны: {len(scanned)}",
+                    tr(ui_locale, "progress.local.sections.category_done", count=len(scanned)),
                     40,
                     "sections",
                 )
@@ -969,7 +1084,7 @@ class AnalyzerService:
         if options.include_fallback_scan and need_fallback and len(scanned) < options.section_limit:
             if progress:
                 progress(
-                    "Запускаю резервный обход разделов.",
+                    tr(ui_locale, "progress.local.sections.fallback_start"),
                     35,
                     "sections",
                 )
@@ -980,7 +1095,7 @@ class AnalyzerService:
             scan_sections(all_sections, options.section_limit)
             if progress:
                 progress(
-                    f"Резервный обход завершён. Просканировано разделов: {len(scanned)}",
+                    tr(ui_locale, "progress.local.sections.fallback_done", count=len(scanned)),
                     45,
                     "sections",
                 )
@@ -989,112 +1104,147 @@ class AnalyzerService:
 
     def _collect_demand_reviews(
         self,
-        query: str,
         offers: list[OfferData],
         options: EffectiveAnalyzeOptionsDTO,
         category_game_id: int | None = None,
         category_id: int | None = None,
+        category_ids: list[int] | None = None,
+        category_tokens: list[str] | None = None,
         locale: str | None = None,
+        ui_locale: str = "ru",
         progress: ProgressCallback | None = None,
-    ) -> tuple[list[ReviewData], list[ReviewData], bool, int]:
+    ) -> tuple[list[ReviewData], list[ReviewData], ReviewMatchDiagnostics, list[SellerDemandStat]]:
         seller_freq = Counter(offer.seller_id for offer in offers if offer.seller_id is not None)
         seller_ids = [seller_id for seller_id, _ in seller_freq.most_common(options.seller_limit)]
         seller_offer_map: dict[int, list[OfferData]] = defaultdict(list)
+        seller_name_map: dict[int, str] = {}
         for offer in offers:
             if offer.seller_id is not None:
                 seller_offer_map[offer.seller_id].append(offer)
-        token_list, used_fallback_tokens = self._review_relevance_tokens(
-            query=query,
-            offers=offers,
-            category_game_id=category_game_id,
-            category_id=category_id,
-        )
+                seller_name_map.setdefault(offer.seller_id, offer.seller_name)
+        if category_tokens is None:
+            category_tokens, _ = self._category_tokens(
+                category_game_id=category_game_id,
+                category_ids=self._normalized_category_ids(category_id, category_ids),
+            )
+        diagnostics = ReviewMatchDiagnostics(sellers_targeted=len(seller_ids))
+        seller_stats: list[SellerDemandStat] = []
         if progress:
             progress(
-                f"Подготовлен список продавцов для отзывов: {len(seller_ids)}",
+                tr(ui_locale, "progress.local.reviews.sellers_prepared", count=len(seller_ids)),
                 55,
                 "reviews",
             )
-        strict_seller_ids = set(seller_ids[: self.STRICT_FALLBACK_SELLERS]) if used_fallback_tokens else set()
 
         all_reviews: list[ReviewData] = []
         relevant_reviews: list[ReviewData] = []
-        failed_sellers = 0
         total_sellers = len(seller_ids)
         for idx, seller_id in enumerate(seller_ids, start=1):
+            review_pages_limit = options.review_pages_per_seller
+            # Для первых продавцов углубляем выборку отзывов, чтобы в строгом режиме
+            # (игра + цена) чаще находить валидные покупки по текущей категории.
+            if idx <= min(5, total_sellers):
+                review_pages_limit = max(review_pages_limit, 5)
             if progress:
                 progress(
-                    f"Проверяю продавца {idx}/{max(total_sellers, 1)}: #{seller_id}",
+                    tr(
+                        ui_locale,
+                        "progress.local.reviews.seller.scan",
+                        idx=idx,
+                        total=max(total_sellers, 1),
+                        seller_id=seller_id,
+                    ),
                     56 + min(20.0, idx * 0.45),
                     "seller",
                 )
             try:
+
                 def on_review_page(page_number: int) -> None:
                     if progress:
                         progress(
-                            f"Проверил страницу отзывов #{page_number} продавца #{seller_id}",
+                            tr(
+                                ui_locale,
+                                "progress.local.reviews.page",
+                                page=page_number,
+                                seller_id=seller_id,
+                            ),
                             57 + min(20.0, idx * 0.45),
                             "review-page",
                         )
 
                 seller_reviews = self.client.get_seller_reviews(
                     seller_id=seller_id,
-                    max_pages=options.review_pages_per_seller,
+                    max_pages=review_pages_limit,
                     locale_override=locale,
                     page_callback=on_review_page,
                 )
             except Exception:  # noqa: BLE001
-                failed_sellers += 1
+                diagnostics.failed_sellers += 1
                 if progress:
                     progress(
-                        f"Не удалось получить отзывы продавца #{seller_id}",
+                        tr(ui_locale, "progress.local.reviews.seller.failed", seller_id=seller_id),
                         57 + min(21.0, idx * 0.45),
                         "seller",
                     )
                 continue
+            diagnostics.sellers_analyzed += 1
+            diagnostics.reviews_scanned += len(seller_reviews)
             all_reviews.extend(seller_reviews)
             if progress:
                 progress(
-                    f"Отзывы продавца #{seller_id}: {len(seller_reviews)}",
+                    tr(
+                        ui_locale,
+                        "progress.local.reviews.seller.done",
+                        seller_id=seller_id,
+                        count=len(seller_reviews),
+                    ),
                     58 + min(22.0, idx * 0.45),
                     "review",
                 )
-            if used_fallback_tokens:
-                if seller_id in strict_seller_ids:
-                    relevant_reviews.extend(
-                        [
-                            review
-                            for review in seller_reviews
-                            if self._is_top_seller_review_relevant(
-                                review=review,
-                                fallback_tokens=token_list,
-                                seller_offers=seller_offer_map.get(seller_id, []),
-                            )
-                        ]
-                    )
-                else:
-                    relevant_reviews.extend(
-                        [
-                            review
-                            for review in seller_reviews
-                            if self._is_fallback_review_relevant(review, token_list)
-                        ]
-                    )
-            else:
-                relevant_reviews.extend(
-                    [
-                        review
-                        for review in seller_reviews
-                        if is_text_relevant(f"{review.detail} {review.text}", token_list)
-                        ]
-                    )
+            seller_offers = seller_offer_map.get(seller_id, [])
+            seller_relevant: list[ReviewData] = []
+            for review in seller_reviews:
+                is_match, reason = self._is_review_matching_purchase(
+                    review=review,
+                    seller_offers=seller_offers,
+                    category_tokens=category_tokens or [],
+                )
+                if is_match:
+                    seller_relevant.append(review)
+                    continue
+                if reason == "no_game_match":
+                    diagnostics.no_game_match += 1
+                elif reason == "no_amount":
+                    diagnostics.no_amount += 1
+                elif reason == "no_price_match":
+                    diagnostics.no_price_match += 1
+            relevant_reviews.extend(seller_relevant)
+            seller_stats.append(
+                SellerDemandStat(
+                    seller_id=seller_id,
+                    seller_name=seller_name_map.get(seller_id, f"seller_{seller_id}"),
+                    reviews_scanned=len(seller_reviews),
+                    estimated_purchases_total=len(seller_relevant),
+                    estimated_purchases_30d=sum(
+                        1 for review in seller_relevant if self._is_this_month_bucket(review.date_bucket)
+                    ),
+                )
+            )
             if progress:
                 progress(
-                    f"Релевантные отзывы после продавца #{seller_id}: {len(relevant_reviews)}",
+                    tr(
+                        ui_locale,
+                        "progress.local.reviews.relevant_after_seller",
+                        seller_id=seller_id,
+                        count=len(relevant_reviews),
+                    ),
                     59 + min(24.0, idx * 0.5),
                     "review",
                 )
-        return all_reviews, relevant_reviews, used_fallback_tokens, failed_sellers
+        seller_stats.sort(
+            key=lambda item: (-item.estimated_purchases_30d, -item.estimated_purchases_total, -item.reviews_scanned)
+        )
+        return all_reviews, relevant_reviews, diagnostics, seller_stats
 
     @staticmethod
     def _build_histogram(prices: list[float], bins_count: int = 8) -> list[PriceHistogramBinDTO]:
@@ -1276,15 +1426,39 @@ class AnalyzerService:
         rows.sort(key=lambda row: (-row.offers_count, row.min_price or float("inf")))
         return rows[:limit]
 
-    def _build_sections_table(self, coverage_rows: list[CoverageRow]) -> list[SectionRowDTO]:
+    @staticmethod
+    def _build_top_demand_sellers_table(
+        seller_stats: list[SellerDemandStat],
+        limit: int = 20,
+    ) -> list[TopDemandSellerDTO]:
+        top = sorted(
+            seller_stats,
+            key=lambda item: (-item.estimated_purchases_30d, -item.estimated_purchases_total, -item.reviews_scanned),
+        )[:limit]
+        return [
+            TopDemandSellerDTO(
+                seller_id=item.seller_id,
+                seller_name=item.seller_name,
+                estimated_purchases_total=item.estimated_purchases_total,
+                estimated_purchases_30d=item.estimated_purchases_30d,
+                reviews_scanned=item.reviews_scanned,
+            )
+            for item in top
+        ]
+
+    def _build_sections_table(self, coverage_rows: list[CoverageRow], ui_locale: str = "ru") -> list[SectionRowDTO]:
         sorted_rows = sorted(
             coverage_rows,
             key=lambda row: (0 if row.coverage_status == "lower_bound" else 1, row.section_url),
         )
+        section_fallback_prefix = "Section" if ui_locale == "en" else "Раздел"
         return [
             SectionRowDTO(
                 section_url=row.section_url,
                 section_id=row.section_id,
+                section_name=row.section_name or (
+                    f"{section_fallback_prefix} #{row.section_id}" if row.section_id is not None else None
+                ),
                 counter_total=row.counter_total,
                 loaded_count=row.loaded_count,
                 coverage_status=row.coverage_status,
@@ -1299,16 +1473,21 @@ class AnalyzerService:
     ) -> AnalyzeEnvelopeDTO:
         now = datetime.now(UTC)
         valid_until = now + timedelta(hours=self.settings.cache_ttl_hours)
+        ui_locale = request_dto.ui_locale.value
+        selected_category_ids = self._normalized_category_ids(request_dto.category_id, request_dto.category_ids)
+        request_dto.category_ids = selected_category_ids
         options = self.resolve_options(
             request_dto.options,
             category_game_id=request_dto.category_game_id,
             category_id=request_dto.category_id,
+            category_ids=selected_category_ids,
         )
         cache_key = self._cache_key(
             request_dto.query,
             request_dto.currency.value,
             options.options_hash,
             request_dto.content_locale.value,
+            ui_locale,
         )
         request_row = self._prepare_request_row(
             request_dto=request_dto,
@@ -1329,12 +1508,12 @@ class AnalyzerService:
             )
 
         try:
-            emit_progress("Запуск анализа.", 2, "start")
+            emit_progress(tr(ui_locale, "progress.local.start"), 2, "start")
             if not request_dto.force_refresh:
-                emit_progress("Проверяю кэш запроса.", 4, "cache")
+                emit_progress(tr(ui_locale, "progress.local.cache.check"), 4, "cache")
                 cached_result = self._get_cached_result(cache_key)
                 if cached_result:
-                    emit_progress("Найден валидный кэш. Возвращаю сохранённый результат.", 100, "cache")
+                    emit_progress(tr(ui_locale, "progress.local.cache.hit"), 100, "cache")
                     envelope = AnalyzeEnvelopeDTO(
                         request_id=request_key,
                         status="done",
@@ -1343,7 +1522,7 @@ class AnalyzerService:
                         error=None,
                         progress=self._build_progress_dto(request_row),
                     )
-                    self._persist_request_done(request_row, envelope)
+                    self._persist_request_done(request_row, envelope, ui_locale=ui_locale)
                     self.db.commit()
                     envelope.progress = self._build_progress_dto(request_row)
                     return envelope
@@ -1353,8 +1532,17 @@ class AnalyzerService:
                 requested_locale=request_dto.content_locale,
                 preferred_currency=request_dto.currency.value,
             )
+            category_tokens, section_name_map = self._category_tokens(
+                category_game_id=request_dto.category_game_id,
+                category_ids=selected_category_ids,
+            )
             emit_progress(
-                f"Собираю офферы в локали {content_locale.upper()} (валюта запроса: {request_dto.currency.value}).",
+                tr(
+                    ui_locale,
+                    "progress.local.collect_offers",
+                    content_locale=content_locale.upper(),
+                    currency=request_dto.currency.value,
+                ),
                 10,
                 "sections",
             )
@@ -1364,6 +1552,9 @@ class AnalyzerService:
                 content_locale=content_locale,
                 category_game_id=request_dto.category_game_id,
                 category_id=request_dto.category_id,
+                category_ids=selected_category_ids,
+                section_name_map=section_name_map,
+                ui_locale=ui_locale,
                 progress=emit_progress,
             )
             offers, excluded_by_currency, relaxed_currency_filter = self._filter_offers_by_currency(
@@ -1371,7 +1562,7 @@ class AnalyzerService:
                 request_dto.currency.value,
             )
             emit_progress(
-                f"Сбор офферов завершён: {len(offers)}.",
+                tr(ui_locale, "progress.local.offers.done", count=len(offers)),
                 50,
                 "sections",
             )
@@ -1382,7 +1573,7 @@ class AnalyzerService:
 
             lower_bound_sections = sum(1 for row in coverage_rows if row.coverage_status == "lower_bound")
             coverage_note = (
-                "Часть разделов имеет ограничение выгрузки (~4000 лотов), метрики являются нижней оценкой."
+                tr(ui_locale, "warning.coverage.lower_bound")
                 if lower_bound_sections > 0
                 else None
             )
@@ -1391,30 +1582,38 @@ class AnalyzerService:
                 warnings.append(coverage_note)
             if not offers:
                 if request_dto.query.strip():
-                    warnings.append("По текущему запросу не найдено релевантных офферов.")
+                    warnings.append(tr(ui_locale, "warning.offers.none_query"))
                 else:
-                    warnings.append("В выбранной области сканирования офферы не найдены.")
+                    warnings.append(tr(ui_locale, "warning.offers.none_scope"))
             if weak_filtered_offers > 0:
                 warnings.append(
-                    f"Отсечено {weak_filtered_offers} офферов со слабыми общими совпадениями "
-                    "(например только по слову 'аренда')."
+                    tr(ui_locale, "warning.offers.weak_filtered", count=weak_filtered_offers)
                 )
             if excluded_by_currency > 0:
                 if relaxed_currency_filter:
                     warnings.append(
-                        f"Офферов в валюте {request_dto.currency.value} не найдено; "
-                        f"показаны исходные офферы в валюте площадки. "
-                        f"Потенциально смешанные валюты: {excluded_by_currency} офферов."
+                        tr(
+                            ui_locale,
+                            "warning.currency.relaxed",
+                            currency=request_dto.currency.value,
+                            count=excluded_by_currency,
+                        )
                     )
                 else:
                     warnings.append(
-                        f"Отфильтровано {excluded_by_currency} офферов в другой валюте "
-                        f"(выбрана {request_dto.currency.value}; конвертация не выполняется)."
+                        tr(
+                            ui_locale,
+                            "warning.currency.filtered",
+                            currency=request_dto.currency.value,
+                            count=excluded_by_currency,
+                        )
                     )
-            if request_dto.category_game_id is not None and request_dto.category_id is None and not coverage_rows:
-                warnings.append("Выбрана игра, но разделы не найдены в каталоге категорий.")
+            if request_dto.category_game_id is not None and not selected_category_ids and not coverage_rows:
+                warnings.append(tr(ui_locale, "warning.category.game_not_found"))
             if request_dto.category_id is not None and not coverage_rows:
-                warnings.append("Выбранный раздел категории не найден или недоступен.")
+                warnings.append(tr(ui_locale, "warning.category.section_not_found"))
+            if selected_category_ids and not coverage_rows and request_dto.category_id is None:
+                warnings.append(tr(ui_locale, "warning.category.sections_not_found"))
 
             offers_stats = OffersStatsDTO(
                 matched_offers=len(offers),
@@ -1443,45 +1642,57 @@ class AnalyzerService:
 
             demand_stats: DemandStatsDTO | None = None
             all_reviews: list[ReviewData] = []
+            relevant_reviews: list[ReviewData] = []
+            demand_diagnostics = ReviewMatchDiagnostics()
+            top_demand_sellers: list[SellerDemandStat] = []
             if options.include_reviews:
-                emit_progress("Начинаю проверку продавцов и их отзывов.", 55, "reviews")
-                all_reviews, relevant_reviews, used_fallback_tokens, failed_review_sellers = self._collect_demand_reviews(
-                    query=request_dto.query,
+                emit_progress(tr(ui_locale, "progress.local.reviews.start"), 55, "reviews")
+                all_reviews, relevant_reviews, demand_diagnostics, top_demand_sellers = self._collect_demand_reviews(
                     offers=offers,
                     options=options,
                     category_game_id=request_dto.category_game_id,
                     category_id=request_dto.category_id,
+                    category_ids=selected_category_ids,
+                    category_tokens=category_tokens,
                     locale=content_locale,
+                    ui_locale=ui_locale,
                     progress=emit_progress,
                 )
                 demand_stats = self.compute_demand_stats(
                     relevant_reviews=relevant_reviews,
                     include_index=options.include_demand_index,
+                    sellers_analyzed=demand_diagnostics.sellers_analyzed,
+                    reviews_scanned=demand_diagnostics.reviews_scanned,
                 )
                 emit_progress(
-                    f"Отзывы обработаны. Релевантных: {demand_stats.relevant_reviews}.",
+                    tr(
+                        ui_locale,
+                        "progress.local.reviews.done",
+                        count=demand_stats.estimated_purchases_total,
+                    ),
                     80,
                     "reviews",
                 )
-                if used_fallback_tokens:
+                if demand_diagnostics.failed_sellers > 0:
                     warnings.append(
-                        "Для отзывов применена категория-эвристика релевантности "
-                        "(запрос слишком общий, например 'аренда')."
+                        tr(
+                            ui_locale,
+                            "warning.reviews.failed_sellers",
+                            count=demand_diagnostics.failed_sellers,
+                        )
                     )
-                    warnings.append(
-                        "Для топ-5 продавцов включена строгая сверка по игре и сумме оплаты в отзыве."
-                    )
-                if failed_review_sellers > 0:
-                    warnings.append(
-                        f"Не удалось собрать отзывы у {failed_review_sellers} продавцов "
-                        "(временные лимиты/прокси-сбои). Метрика спроса может быть занижена."
-                    )
-                if options.include_reviews and demand_stats.relevant_reviews == 0:
-                    warnings.append("Отзывы собраны, но релевантные по запросу не найдены.")
+                if demand_diagnostics.no_amount > 0:
+                    warnings.append(tr(ui_locale, "warning.reviews.no_amount"))
+                if demand_diagnostics.no_game_match > 0:
+                    warnings.append(tr(ui_locale, "warning.reviews.no_game"))
+                if demand_diagnostics.no_price_match > 0:
+                    warnings.append(tr(ui_locale, "warning.reviews.no_price"))
+                if demand_stats.relevant_reviews == 0:
+                    warnings.append(tr(ui_locale, "warning.reviews.none_relevant"))
             else:
-                emit_progress("Режим без анализа отзывов: этап пропущен.", 78, "reviews")
+                emit_progress(tr(ui_locale, "progress.local.reviews.skipped"), 78, "reviews")
 
-            emit_progress("Формирую метрики, таблицы и графики.", 86, "aggregate")
+            emit_progress(tr(ui_locale, "progress.local.aggregate"), 86, "aggregate")
             history_points, delta_vs_previous = self._build_history_points(
                 query=request_dto.query,
                 currency=request_dto.currency.value,
@@ -1496,10 +1707,12 @@ class AnalyzerService:
                 meta=AnalyzeMetaDTO(
                     query=request_dto.query,
                     currency=request_dto.currency,
+                    ui_locale=request_dto.ui_locale,
                     content_locale_requested=request_dto.content_locale,
                     content_locale_applied=content_locale,
                     category_game_id=request_dto.category_game_id,
                     category_id=request_dto.category_id,
+                    category_ids=selected_category_ids,
                     generated_at=now,
                     valid_until=valid_until,
                     effective_options=options,
@@ -1515,12 +1728,13 @@ class AnalyzerService:
                 tables=TablesDTO(
                     top_offers=self._build_top_offers_table(offers),
                     top_sellers=self._build_top_sellers_table(offers),
-                    sections=self._build_sections_table(coverage_rows),
+                    top_demand_sellers=self._build_top_demand_sellers_table(top_demand_sellers),
+                    sections=self._build_sections_table(coverage_rows, ui_locale=ui_locale),
                 ),
                 warnings=warnings,
             )
 
-            emit_progress("Сохраняю результат в БД и историю запусков.", 92, "persist")
+            emit_progress(tr(ui_locale, "progress.local.persist"), 92, "persist")
             self._cleanup_request_snapshots(request_key)
             self._persist_cache(
                 cache_key=cache_key,
@@ -1533,7 +1747,8 @@ class AnalyzerService:
             self._persist_section_coverage(request_key, coverage_rows)
             self._persist_offers(request_key, offers, request_dto.currency.value)
             if options.include_reviews:
-                self._persist_reviews(request_key, all_reviews, query_tokens(request_dto.query))
+                relevant_keys = {self._review_key(review) for review in relevant_reviews}
+                self._persist_reviews(request_key, all_reviews, relevant_keys)
             self._persist_history(
                 request_id=request_key,
                 query=request_dto.query,
@@ -1551,7 +1766,7 @@ class AnalyzerService:
                 error=None,
                 progress=self._build_progress_dto(request_row),
             )
-            self._persist_request_done(request_row, envelope)
+            self._persist_request_done(request_row, envelope, ui_locale=ui_locale)
             self.db.commit()
             envelope.progress = self._build_progress_dto(request_row)
             return envelope
@@ -1559,7 +1774,7 @@ class AnalyzerService:
             self.db.rollback()
             failed_row = self.db.scalar(select(AnalysisRequest).where(AnalysisRequest.id == request_key))
             if failed_row is not None:
-                self._persist_request_error(failed_row, str(exc))
+                self._persist_request_error(failed_row, str(exc), ui_locale=ui_locale)
                 self.db.commit()
             raise
 
@@ -1680,9 +1895,11 @@ class AnalyzerService:
                 request_id=row.request_id,
                 query=row.query,
                 currency=row.currency,
+                ui_locale=meta.get("ui_locale", "ru"),
                 generated_at=row.generated_at,
                 category_game_id=meta.get("category_game_id"),
                 category_id=meta.get("category_id"),
+                category_ids=meta.get("category_ids") or [],
                 matched_offers=int(offers.get("matched_offers", 0)),
                 unique_sellers=int(offers.get("unique_sellers", 0)),
                 p50_price=offers.get("p50_price"),

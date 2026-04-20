@@ -71,3 +71,17 @@ def test_collect_offers_with_empty_query_returns_all_offers_in_selected_section(
     assert len(offers) == 2
     assert weak_filtered == 0
     assert len(coverage_rows) == 1
+
+
+def test_collect_offers_with_category_ids_union_works_for_empty_query() -> None:
+    service = AnalyzerService(db=None, client=_FakeClient(), settings=Settings())  # type: ignore[arg-type]
+    options = service.resolve_options(AnalyzeOptionsDTO(), category_id=2893, category_ids=[2893])
+    offers, coverage_rows, weak_filtered = service._collect_offers(
+        query="",
+        options=options,
+        content_locale="ru",
+        category_ids=[2893],
+    )
+    assert len(offers) == 2
+    assert weak_filtered == 0
+    assert len(coverage_rows) == 1

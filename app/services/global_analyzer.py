@@ -28,6 +28,7 @@ from app.schemas.v2 import (
     ProgressV2DTO,
 )
 from app.services.marketplaces.registry import MarketplaceRegistry
+from app.services.i18n import tr
 
 
 class GlobalAnalyzerService:
@@ -87,6 +88,58 @@ class GlobalAnalyzerService:
                 if auto_known
                 else None
             ),
+        )
+
+    @classmethod
+    def _offers_stats_from_summaries(
+        cls,
+        summaries: list[MarketplaceSummaryDTO],
+    ) -> OffersStatsV2DTO:
+        if not summaries:
+            return OffersStatsV2DTO(
+                matched_offers=0,
+                unique_sellers=0,
+                min_price=None,
+                avg_price=None,
+                p50_price=None,
+                p90_price=None,
+                max_price=None,
+                online_share=None,
+                auto_delivery_share=None,
+            )
+        matched = [item.offers_stats.matched_offers for item in summaries]
+        unique_sellers = [item.offers_stats.unique_sellers for item in summaries]
+        min_prices = [item.offers_stats.min_price for item in summaries if item.offers_stats.min_price is not None]
+        max_prices = [item.offers_stats.max_price for item in summaries if item.offers_stats.max_price is not None]
+        p50_values = [item.offers_stats.p50_price for item in summaries if item.offers_stats.p50_price is not None]
+        p90_values = [item.offers_stats.p90_price for item in summaries if item.offers_stats.p90_price is not None]
+
+        weighted_price_sum = 0.0
+        weighted_price_count = 0
+        for item in summaries:
+            if item.offers_stats.avg_price is None:
+                continue
+            offers_count = max(0, int(item.offers_stats.matched_offers))
+            weighted_price_sum += float(item.offers_stats.avg_price) * offers_count
+            weighted_price_count += offers_count
+
+        online_values = [item.offers_stats.online_share for item in summaries if item.offers_stats.online_share is not None]
+        auto_values = [
+            item.offers_stats.auto_delivery_share
+            for item in summaries
+            if item.offers_stats.auto_delivery_share is not None
+        ]
+
+        return OffersStatsV2DTO(
+            matched_offers=sum(matched),
+            unique_sellers=sum(unique_sellers),
+            min_price=min(min_prices) if min_prices else None,
+            avg_price=(round(weighted_price_sum / weighted_price_count, 6) if weighted_price_count > 0 else None),
+            p50_price=(round(sum(p50_values) / len(p50_values), 6) if p50_values else None),
+            p90_price=(round(sum(p90_values) / len(p90_values), 6) if p90_values else None),
+            max_price=max(max_prices) if max_prices else None,
+            online_share=(round(sum(online_values) / len(online_values), 4) if online_values else None),
+            auto_delivery_share=(round(sum(auto_values) / len(auto_values), 4) if auto_values else None),
         )
 
     def _read_payload(self, row: AnalysisRequest) -> dict:
@@ -194,6 +247,11 @@ class GlobalAnalyzerService:
 
         query = payload.common_filters.query
         currency = payload.common_filters.currency.value
+        request_filters_payload = {
+            "marketplaces": [item.value for item in payload.marketplaces],
+            "common_filters": payload.common_filters.model_dump(mode="json"),
+            "marketplace_filters": payload.marketplace_filters.model_dump(mode="json"),
+        }
         if row is None:
             row = AnalysisRequest(
                 id=run_id,
@@ -208,7 +266,8 @@ class GlobalAnalyzerService:
                         "stage": status,
                         "message": None,
                         "logs": [],
-                    }
+                    },
+                    "request_filters": request_filters_payload,
                 },
             )
         else:
@@ -222,6 +281,7 @@ class GlobalAnalyzerService:
             payload_json["overview"] = None
             payload_json["marketplace_summaries"] = {}
             payload_json["marketplace_results"] = {}
+            payload_json["request_filters"] = request_filters_payload
             progress = payload_json.get("progress", {})
             progress["stage"] = status
             payload_json["progress"] = progress
@@ -233,11 +293,12 @@ class GlobalAnalyzerService:
 
     def create_queued_run(self, payload: AnalyzeV2RequestDTO) -> str:
         row = self._prepare_run_row(payload=payload, status="queued")
+        ui_locale = payload.common_filters.ui_locale.value
         self._set_progress(
             row,
             percent=1,
             stage="queued",
-            message="Задача поставлена в очередь.",
+            message=tr(ui_locale, "progress.global.queued"),
             append_log=True,
             commit=False,
         )
@@ -270,18 +331,30 @@ class GlobalAnalyzerService:
         marketplace_results: dict[str, MarketplaceRunResultDTO],
     ) -> OverviewV2DTO:
         pooled_offers: list[dict] = []
+        pooled_summaries: list[MarketplaceSummaryDTO] = []
         comparison = []
         matched_values: list[int] = []
         unique_seller_values: list[int] = []
         p50_values: list[float] = []
+        use_summary_pooling = False
 
         for slug in selected_marketplaces:
             key = slug.value
             result = marketplace_results.get(key)
             if result is None:
                 continue
-            pooled_offers.extend([item.model_dump(mode="json") for item in result.core.offers])
             summary = result.summary
+            pooled_summaries.append(summary)
+            core_offers_count = len(result.core.offers)
+            summary_offers_count = int(summary.offers_stats.matched_offers)
+            if core_offers_count > 0:
+                pooled_offers.extend([item.model_dump(mode="json") for item in result.core.offers])
+            else:
+                use_summary_pooling = True
+            # Если core-срез неполный (например cache-hit без snapshot'ов или limit),
+            # сводные pooled-метрики считаем по summary, чтобы избежать занижения.
+            if summary_offers_count > core_offers_count:
+                use_summary_pooling = True
             matched_values.append(summary.offers_stats.matched_offers)
             unique_seller_values.append(summary.offers_stats.unique_sellers)
             if summary.offers_stats.p50_price is not None:
@@ -309,7 +382,11 @@ class GlobalAnalyzerService:
         return OverviewV2DTO(
             generated_at=cls._utc_now(),
             marketplaces=selected_marketplaces,
-            pooled_offers_stats=cls._offers_stats_from_normalized(pooled_offers),
+            pooled_offers_stats=(
+                cls._offers_stats_from_summaries(pooled_summaries)
+                if use_summary_pooling or not pooled_offers
+                else cls._offers_stats_from_normalized(pooled_offers)
+            ),
             comparison=comparison,
             aggregates=aggregates,
         )
@@ -328,6 +405,7 @@ class GlobalAnalyzerService:
 
     def analyze(self, payload: AnalyzeV2RequestDTO, run_id: str | None = None) -> AnalyzeV2EnvelopeDTO:
         run_row = self._prepare_run_row(payload=payload, run_id=run_id, status="running")
+        ui_locale = payload.common_filters.ui_locale.value
 
         def emit_progress(message: str, percent: float | None = None, stage: str = "info") -> None:
             self._set_progress(
@@ -340,11 +418,15 @@ class GlobalAnalyzerService:
             )
 
         try:
-            emit_progress("Проверяю доступность выбранных площадок.", 3, "validate")
+            emit_progress(tr(ui_locale, "progress.global.validate"), 3, "validate")
             self.validate_marketplaces(payload.marketplaces)
             selected_marketplaces = [item for item in payload.marketplaces]
             emit_progress(
-                f"Запускаю анализ площадок: {', '.join(item.value for item in selected_marketplaces)}.",
+                tr(
+                    ui_locale,
+                    "progress.global.start",
+                    marketplaces=", ".join(item.value for item in selected_marketplaces),
+                ),
                 8,
                 "start",
             )
@@ -353,7 +435,7 @@ class GlobalAnalyzerService:
             total = max(1, len(selected_marketplaces))
             for idx, slug in enumerate(selected_marketplaces, start=1):
                 emit_progress(
-                    f"[{idx}/{total}] Анализ площадки {slug.value}.",
+                    tr(ui_locale, "progress.global.marketplace.start", idx=idx, total=total, slug=slug.value),
                     10 + min(75.0, idx * (70.0 / total)),
                     f"marketplace:{slug.value}",
                 )
@@ -361,7 +443,7 @@ class GlobalAnalyzerService:
                 marketplace_filters = filter_payload.get(slug.value)
                 results[slug.value] = provider.analyze(payload.common_filters, marketplace_filters)
                 emit_progress(
-                    f"Площадка {slug.value}: готово.",
+                    tr(ui_locale, "progress.global.marketplace.done", slug=slug.value),
                     12 + min(77.0, idx * (72.0 / total)),
                     f"marketplace:{slug.value}",
                 )
@@ -384,6 +466,21 @@ class GlobalAnalyzerService:
                 key: value.model_dump(mode="json") for key, value in summaries.items()
             }
             payload_json["marketplace_results"] = self._serialize_marketplace_results(results)
+            progress_payload = payload_json.get("progress", {})
+            logs = progress_payload.get("logs", [])
+            if isinstance(logs, list):
+                logs.append(
+                    {
+                        "ts": self._utc_iso(),
+                        "stage": "done",
+                        "message": tr(ui_locale, "progress.global.done"),
+                    }
+                )
+                progress_payload["logs"] = logs[-200:]
+            progress_payload["percent"] = 100.0
+            progress_payload["stage"] = "done"
+            progress_payload["message"] = tr(ui_locale, "progress.global.done")
+            payload_json["progress"] = progress_payload
             run_row.result_json = payload_json
             run_row.status = "done"
             run_row.error_text = None
@@ -403,12 +500,12 @@ class GlobalAnalyzerService:
                     {
                         "ts": self._utc_iso(),
                         "stage": "failed",
-                        "message": f"Ошибка: {exc}",
+                        "message": f"{tr(ui_locale, 'error.prefix')}: {exc}",
                     }
                 )
                 progress["logs"] = logs[-200:]
                 progress["stage"] = "failed"
-                progress["message"] = "Анализ завершился с ошибкой."
+                progress["message"] = tr(ui_locale, "progress.global.failed")
                 payload_json["progress"] = progress
                 failed_row.status = "failed"
                 failed_row.error_text = str(exc)
@@ -584,6 +681,22 @@ class GlobalAnalyzerService:
             summaries_raw = payload.get("marketplace_summaries")
             if not isinstance(overview_raw, dict) or not isinstance(summaries_raw, dict):
                 continue
+            request_filters = payload.get("request_filters")
+            common_filters = (
+                request_filters.get("common_filters")
+                if isinstance(request_filters, dict)
+                else None
+            )
+            marketplace_filters = (
+                request_filters.get("marketplace_filters")
+                if isinstance(request_filters, dict)
+                else None
+            )
+            funpay_filters = (
+                marketplace_filters.get("funpay")
+                if isinstance(marketplace_filters, dict)
+                else None
+            )
             try:
                 overview = OverviewV2DTO.model_validate(overview_raw)
             except Exception:  # noqa: BLE001
@@ -612,8 +725,28 @@ class GlobalAnalyzerService:
                     run_id=row.id,
                     query=row.query,
                     currency=row.currency,
+                    ui_locale=(common_filters.get("ui_locale", "ru") if isinstance(common_filters, dict) else "ru"),
                     generated_at=overview.generated_at,
                     marketplaces=overview.marketplaces,
+                    category_game_id=(
+                        funpay_filters.get("category_game_id")
+                        if isinstance(funpay_filters, dict)
+                        else None
+                    ),
+                    category_id=(
+                        funpay_filters.get("category_id")
+                        if isinstance(funpay_filters, dict)
+                        else None
+                    ),
+                    category_ids=(
+                        [
+                            int(item)
+                            for item in (funpay_filters.get("category_ids") or [])
+                            if str(item).isdigit()
+                        ]
+                        if isinstance(funpay_filters, dict)
+                        else []
+                    ),
                     pooled_matched_offers=overview.pooled_offers_stats.matched_offers,
                     pooled_unique_sellers=overview.pooled_offers_stats.unique_sellers,
                     pooled_p50_price=overview.pooled_offers_stats.p50_price,

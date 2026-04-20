@@ -20,6 +20,7 @@ from app.schemas.v2 import (
     V2ExecutionMode,
 )
 from app.services.global_analyzer import GlobalAnalyzerService
+from app.services.i18n import tr
 
 router = APIRouter(prefix="/v2", tags=["v2"])
 
@@ -53,23 +54,28 @@ def analyze_v2(
 ) -> AnalyzeV2EnvelopeDTO:
     settings = get_settings()
     payload.common_filters.query = payload.common_filters.query.strip()
+    ui_locale = payload.common_filters.ui_locale.value
     if payload.common_filters.query == "":
         needs_category = any(item.value == "funpay" for item in payload.marketplaces)
         funpay_filters = payload.marketplace_filters.funpay
         if needs_category and (
             funpay_filters is None
-            or (funpay_filters.category_game_id is None and funpay_filters.category_id is None)
+            or (
+                funpay_filters.category_game_id is None
+                and funpay_filters.category_id is None
+                and len(funpay_filters.category_ids) == 0
+            )
         ):
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    "Для пустого запроса по FunPay выберите category_game_id или category_id "
-                    "в marketplace_filters.funpay."
-                ),
+                detail=tr(ui_locale, "validation.empty_query_requires_scope"),
             )
 
     service = _make_service(db)
     try:
+        # Валидацию площадок делаем до любых DB-операций, чтобы возвращать
+        # понятную 400-ошибку даже в облегчённых test-окружениях.
+        service.validate_marketplaces(payload.marketplaces)
         should_enqueue = False
         if payload.common_filters.execution == V2ExecutionMode.async_mode:
             should_enqueue = True

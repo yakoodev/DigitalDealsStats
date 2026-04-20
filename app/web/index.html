@@ -160,6 +160,28 @@
       font-size: 13px;
     }
     .check input { width: auto; margin: 2px 0 0; }
+    .section-checklist {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      max-height: 260px;
+      overflow: auto;
+      padding: 6px;
+      display: grid;
+      gap: 6px;
+    }
+    .section-empty {
+      color: var(--muted);
+      font-size: 12px;
+      padding: 8px 6px;
+    }
+    .section-item {
+      margin: 0;
+      background: #f9fcff;
+    }
+    .section-item .hint {
+      margin-top: 2px;
+    }
     .actions {
       display: flex;
       gap: 8px;
@@ -423,6 +445,11 @@
       margin-left: auto;
       align-self: center;
     }
+    .with-tip {
+      cursor: help;
+      border-bottom: 1px dashed #89a6d5;
+      text-decoration: none;
+    }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -474,6 +501,13 @@
                 <option value="async">async</option>
               </select>
             </div>
+            <div>
+              <label for="uiLocale">Язык интерфейса</label>
+              <select id="uiLocale">
+                <option value="ru" selected>Русский</option>
+                <option value="en">English</option>
+              </select>
+            </div>
 
             <div id="marketplaceSelectBlock" class="full">
               <label>Площадки</label>
@@ -523,32 +557,41 @@
               </select>
             </div>
             <div class="full">
-              <label for="fpSection">Раздел категории</label>
-              <select id="fpSection">
-                <option value="">Любой раздел</option>
-              </select>
+              <label for="fpSectionSearch">Разделы категории (чекбоксы)</label>
+              <input id="fpSectionSearch" type="text" placeholder="Фильтр разделов по названию" />
+              <div class="actions compact" style="margin-top:6px;">
+                <button id="fpSectionSelectVisible" type="button" class="btn-secondary">Отметить видимые</button>
+                <button id="fpSectionClearVisible" type="button" class="btn-secondary">Снять видимые</button>
+                <span id="fpSectionSelectedCount" class="chip-inline">Выбрано: 0</span>
+              </div>
+              <div id="fpSectionChecklist" class="section-checklist"></div>
+              <label class="check" style="margin-top:6px;">
+                <input id="fpUseGameScope" type="checkbox" />
+                Добавить все разделы выбранной игры (union с отмеченными разделами)
+              </label>
+              <div class="hint">Ctrl не нужен: отмечайте нужные разделы чекбоксами. Если разделы отмечены, по умолчанию анализируются только они.</div>
             </div>
             <div>
-              <label for="fpSectionLimit">section_limit</label>
+              <label for="fpSectionLimit">Лимит разделов сканирования</label>
               <input id="fpSectionLimit" type="number" min="1" max="500" placeholder="по профилю" />
             </div>
             <div>
-              <label for="fpSellerLimit">seller_limit</label>
-              <input id="fpSellerLimit" type="number" min="1" max="500" placeholder="по профилю" />
+              <label for="fpSellerLimit">Топ-продавцов для анализа отзывов</label>
+              <input id="fpSellerLimit" type="number" min="1" max="20" value="3" />
             </div>
             <div>
-              <label for="fpReviewPages">review_pages_per_seller</label>
+              <label for="fpReviewPages">Страниц отзывов на продавца</label>
               <input id="fpReviewPages" type="number" min="1" max="20" placeholder="по профилю" />
             </div>
             <div>
-              <label for="fpHistoryPoints">history_points_limit</label>
+              <label for="fpHistoryPoints">Точек в истории</label>
               <input id="fpHistoryPoints" type="number" min="5" max="365" value="60" />
             </div>
             <div class="full checks">
-              <label class="check"><input id="forceRefresh" type="checkbox" />force_refresh</label>
-              <label class="check"><input id="fpIncludeReviews" type="checkbox" />include_reviews</label>
-              <label class="check"><input id="fpIncludeDemand" type="checkbox" />include_demand_index</label>
-              <label class="check"><input id="fpIncludeFallback" type="checkbox" checked />include_fallback_scan</label>
+              <label class="check"><input id="forceRefresh" type="checkbox" />Игнорировать кэш (force_refresh)</label>
+              <label class="check"><input id="fpIncludeReviews" type="checkbox" />Анализировать отзывы</label>
+              <label class="check"><input id="fpIncludeDemand" type="checkbox" />Считать Demand Index</label>
+              <label class="check"><input id="fpIncludeFallback" type="checkbox" checked />Резервный обход разделов</label>
             </div>
           </div>
 
@@ -624,30 +667,81 @@
 
         <div id="marketplacePage" class="stack hidden">
           <div class="panel">
-            <div class="head">Детальный анализ площадки</div>
+            <div class="head">Ключевые KPI</div>
             <div class="body">
               <div id="marketplaceMeta" class="muted">Нет данных по площадке.</div>
               <div id="marketplaceKpi" class="kpi" style="margin-top:8px;"></div>
-              <div id="marketplaceWarnings" style="margin-top:8px;"></div>
             </div>
           </div>
 
           <div class="panel">
-            <div class="head">Графики площадки</div>
+            <div class="head">Спрос по отзывам</div>
+            <div class="body split">
+              <div>
+                <div id="marketDemandKpi" class="kpi"></div>
+              </div>
+              <div>
+                <div class="hint">Топ продавцов по оценке покупок (30д)</div>
+                <div class="table-wrap"><table id="topDemandSellersTable"></table></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="head">Конкуренция и демпинг</div>
+            <div class="body split">
+              <div>
+                <div class="hint">
+                  <span class="with-tip" title="HHI — индекс концентрации: чем выше, тем рынок более монополизирован.">HHI</span>,
+                  <span class="with-tip" title="Top-3 Share — доля топ-3 продавцов по количеству офферов.">Top-3 Share</span>,
+                  <span class="with-tip" title="Price Spread = (P90 - P10) / P50, показывает разброс цен.">Price Spread</span>,
+                  <span class="with-tip" title="IQR = Q3 - Q1, межквартильный размах для оценки выбросов.">IQR</span>
+                </div>
+                <div id="competitionKpi" class="kpi"></div>
+              </div>
+              <div>
+                <div class="hint">Кандидаты в демпинг</div>
+                <div class="table-wrap"><table id="dumpingTable"></table></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="head">Интерактивные графики</div>
             <div class="body split">
               <div class="chart-box">
-                <div class="hint">Гистограмма цен (по полному срезу)</div>
+                <div class="hint">Гистограмма цен + выбросы</div>
                 <canvas id="marketPriceCanvas" width="700" height="260"></canvas>
               </div>
               <div class="chart-box">
-                <div class="hint">История запусков (matched_offers)</div>
+                <div class="hint">История запуска: офферы и спрос</div>
                 <canvas id="marketHistoryCanvas" width="700" height="260"></canvas>
+              </div>
+              <div class="chart-box">
+                <div class="hint">Конкуренция продавцов: офферы vs медианная цена</div>
+                <canvas id="sellerCompetitionCanvas" width="700" height="260"></canvas>
+              </div>
+              <div class="chart-box">
+                <div class="hint">Покрытие разделов: loaded vs counter</div>
+                <canvas id="coverageCanvas" width="700" height="260"></canvas>
               </div>
             </div>
           </div>
 
           <div class="panel">
-            <div class="head">Топ данные площадки</div>
+            <div class="head">Офферы продавца из графика конкуренции</div>
+            <div class="body">
+              <div id="sellerFocusMeta" class="hint">Нажмите на точку в графике "Конкуренция продавцов", чтобы открыть офферы этого продавца.</div>
+              <div class="actions compact">
+                <button id="sellerFocusApplyFilterBtn" type="button" class="btn-secondary">Подставить продавца в фильтр среза</button>
+                <button id="sellerFocusClearBtn" type="button" class="btn-secondary">Сбросить выбор</button>
+              </div>
+              <div class="table-wrap"><table id="sellerFocusTable"></table></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="head">Покрытие и ограничения</div>
             <div class="body split">
               <div>
                 <div class="hint">Топ офферы</div>
@@ -659,6 +753,7 @@
               </div>
             </div>
             <div class="body" style="padding-top:0;">
+              <div id="marketplaceWarnings" style="margin:0 0 8px 0;"></div>
               <div class="hint">Покрытие разделов</div>
               <div class="table-wrap"><table id="sectionsTable"></table></div>
             </div>
@@ -773,6 +868,9 @@
     let currentMarketplaceResult = null;
     let fullOffers = [];
     let filteredOffers = [];
+    let marketAnalyticsOffers = [];
+    let sellerFocusPoint = null;
+    let selectedSectionIds = new Set();
     let offersPage = 0;
 
     const routePath = window.location.pathname;
@@ -783,7 +881,75 @@
     const chartState = {
       price: { bins: [], bars: [], hoverIndex: -1, canvas: $("marketPriceCanvas") },
       history: { points: [], coords: [], hoverIndex: -1, canvas: $("marketHistoryCanvas") },
+      sellers: { points: [], canvas: $("sellerCompetitionCanvas"), hoverIndex: -1 },
+      coverage: { bars: [], canvas: $("coverageCanvas"), hoverIndex: -1 },
     };
+
+    const I18N = {
+      ru: {
+        statusWaiting: "Ожидание запуска",
+        stagePrefix: "Этап",
+        noData: "Нет данных",
+        noHistory: "Недостаточно истории",
+        runDone: "Анализ завершен.",
+        runStart: "Запускаю анализ...",
+        selectMarketplace: "Выберите хотя бы одну площадку.",
+        runIdRequired: "Укажите run_id",
+        copyRunIdRequired: "Сначала укажите run_id.",
+        copiedRunId: "run_id скопирован в буфер обмена.",
+        csvNoData: "Нет данных для экспорта CSV. Сначала примените фильтры к срезу офферов.",
+        csvDone: "CSV экспортирован: {count} строк.",
+        errorPrefix: "Ошибка",
+        unknown: "неизвестно",
+        yes: "да",
+        no: "нет",
+        openOverview: "Открыть overview",
+        openMarketplace: "Открыть площадку",
+        emptyQueryLabel: "пустой запрос",
+        historyEmpty: "История пока пустая.",
+        historyNoFilter: "По выбранным фильтрам записи не найдены.",
+        historyLoaded: "Показано запусков: {shown} из {total}",
+      },
+      en: {
+        statusWaiting: "Waiting for run",
+        stagePrefix: "Stage",
+        noData: "No data",
+        noHistory: "Not enough history",
+        runDone: "Analysis completed.",
+        runStart: "Starting analysis...",
+        selectMarketplace: "Select at least one marketplace.",
+        runIdRequired: "Provide run_id",
+        copyRunIdRequired: "Provide run_id first.",
+        copiedRunId: "run_id copied to clipboard.",
+        csvNoData: "No data for CSV export. Apply offers filters first.",
+        csvDone: "CSV exported: {count} rows.",
+        errorPrefix: "Error",
+        unknown: "unknown",
+        yes: "yes",
+        no: "no",
+        openOverview: "Open overview",
+        openMarketplace: "Open marketplace",
+        emptyQueryLabel: "empty query",
+        historyEmpty: "History is empty.",
+        historyNoFilter: "No records for selected filters.",
+        historyLoaded: "Runs shown: {shown} of {total}",
+      },
+    };
+
+    let currentUiLocale = $("uiLocale").value || "ru";
+
+    function t(key, vars = {}) {
+      const dict = I18N[currentUiLocale] || I18N.ru;
+      let template = dict[key] || I18N.ru[key] || key;
+      for (const [name, value] of Object.entries(vars)) {
+        template = template.replaceAll(`{${name}}`, String(value));
+      }
+      return template;
+    }
+
+    function localeTag() {
+      return currentUiLocale === "en" ? "en-US" : "ru-RU";
+    }
 
     function safeUrl(url) {
       if (!url) return null;
@@ -809,7 +975,7 @@
       if (value === null || value === undefined) return "—";
       const number = Number(value);
       if (!Number.isFinite(number)) return "—";
-      return number.toLocaleString("ru-RU");
+      return number.toLocaleString(localeTag());
     }
 
     function currencyMark(raw) {
@@ -825,7 +991,7 @@
       const number = Number(value);
       if (!Number.isFinite(number)) return "—";
       const mark = currencyMark(currency);
-      const base = number.toLocaleString("ru-RU", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+      const base = number.toLocaleString(localeTag(), { maximumFractionDigits: 2, minimumFractionDigits: 0 });
       return mark ? `${base} ${mark}` : base;
     }
 
@@ -850,11 +1016,62 @@
       return Number.isFinite(number) ? number : null;
     }
 
+    function syncSectionSelectionFromDom() {
+      const checklist = $("fpSectionChecklist");
+      if (!checklist) return;
+      const boxes = Array.from(checklist.querySelectorAll("input[type='checkbox'][data-section-id]"));
+      for (const box of boxes) {
+        const id = Number(box.getAttribute("data-section-id"));
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (box.checked) selectedSectionIds.add(Math.floor(id));
+        else selectedSectionIds.delete(Math.floor(id));
+      }
+    }
+
+    function readSelectedSectionIds() {
+      syncSectionSelectionFromDom();
+      return [...selectedSectionIds].sort((a, b) => a - b);
+    }
+
+    function updateSectionSelectedCount() {
+      const node = $("fpSectionSelectedCount");
+      if (!node) return;
+      const count = selectedSectionIds.size;
+      node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
+    }
+
     function parseLines(id) {
       return $(id).value
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
+    }
+
+    function applyUiLocale() {
+      currentUiLocale = $("uiLocale").value || "ru";
+      localStorage.setItem("marketstat_v2_ui_locale", currentUiLocale);
+      document.documentElement.lang = currentUiLocale;
+      document.title = currentUiLocale === "en" ? "MarketStat v2" : "MarketStat v2";
+      const subtitle = document.querySelector(".subtitle");
+      if (subtitle) {
+        subtitle.textContent = currentUiLocale === "en"
+          ? "Multi-marketplace analytics: overview + marketplace details."
+          : "Мульти-площадочная аналитика: общий обзор + детализация по площадкам.";
+      }
+      const labels = [
+        ["label[for='fpSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
+        ["label[for='uiLocale']", currentUiLocale === "en" ? "UI locale" : "Язык интерфейса"],
+        ["label[for='fpSectionSearch']", currentUiLocale === "en" ? "Category sections (checkboxes)" : "Разделы категории (чекбоксы)"],
+      ];
+      for (const [selector, text] of labels) {
+        const node = document.querySelector(selector);
+        if (node) node.textContent = text;
+      }
+      updateSectionSelectedCount();
+      if (!selectedRunId) {
+        lastUpdateChip.textContent = t("statusWaiting");
+        statusBanner.textContent = t("statusWaiting");
+      }
     }
 
     function setStatus(text, mode = "") {
@@ -914,7 +1131,7 @@
         $("fpIncludeDemand").checked = false;
         $("fpIncludeFallback").checked = false;
         $("fpSectionLimit").value = "40";
-        $("fpSellerLimit").value = "10";
+        $("fpSellerLimit").value = "3";
         $("fpReviewPages").value = "1";
         return;
       }
@@ -924,7 +1141,7 @@
         $("fpIncludeDemand").checked = false;
         $("fpIncludeFallback").checked = true;
         $("fpSectionLimit").value = "120";
-        $("fpSellerLimit").value = "30";
+        $("fpSellerLimit").value = "3";
         $("fpReviewPages").value = "2";
         return;
       }
@@ -934,7 +1151,7 @@
         $("fpIncludeDemand").checked = true;
         $("fpIncludeFallback").checked = true;
         $("fpSectionLimit").value = "200";
-        $("fpSellerLimit").value = "60";
+        $("fpSellerLimit").value = "8";
         $("fpReviewPages").value = "4";
       }
     }
@@ -994,13 +1211,13 @@
       const percent = Number.isFinite(percentRaw) ? Math.max(0, Math.min(100, percentRaw)) : (status === "done" ? 100 : 0);
       progressFill.style.width = `${percent}%`;
       progressPercent.textContent = `${percent.toFixed(0)}%`;
-      progressStage.textContent = `Этап: ${progress.stage || status}`;
-      progressMessage.textContent = progress.message || "Нет подробностей.";
+      progressStage.textContent = `${t("stagePrefix")}: ${progress.stage || status}`;
+      progressMessage.textContent = progress.message || t("noData");
       const logs = Array.isArray(progress.logs) ? progress.logs : [];
       renderTable(
         progressTable,
         [
-          { label: "Время", render: (r) => new Date(r.ts).toLocaleTimeString("ru-RU") },
+          { label: "Время", render: (r) => new Date(r.ts).toLocaleTimeString(localeTag()) },
           { label: "Этап", render: (r) => r.stage || "info" },
           { label: "Событие", render: (r) => r.message || "—" },
         ],
@@ -1009,11 +1226,12 @@
     }
 
     function renderTable(host, columns, rows) {
+      const renderHead = () => columns.map((c) => `<th>${c.labelHtml ? c.labelHtml : escapeHtml(c.label)}</th>`).join("");
       if (!rows || rows.length === 0) {
-        host.innerHTML = `<thead><tr>${columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("")}</tr></thead><tbody><tr><td colspan="${columns.length}">Нет данных</td></tr></tbody>`;
+        host.innerHTML = `<thead><tr>${renderHead()}</tr></thead><tbody><tr><td colspan="${columns.length}">${escapeHtml(t("noData"))}</td></tr></tbody>`;
         return;
       }
-      const head = `<thead><tr>${columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("")}</tr></thead>`;
+      const head = `<thead><tr>${renderHead()}</tr></thead>`;
       const body = `<tbody>${rows.map((row) => `<tr>${columns.map((c) => {
         const rendered = c.render(row);
         const content = c.isHtml ? String(rendered ?? "—") : escapeHtml(rendered ?? "—");
@@ -1022,17 +1240,21 @@
       host.innerHTML = head + body;
     }
 
+    function labelWithTip(label, tipText) {
+      return `<span class="with-tip" title="${escapeHtml(tipText)}">${escapeHtml(label)}</span>`;
+    }
+
     function renderOverview(overview) {
       const pooled = overview?.pooled_offers_stats || {};
       const cards = [
-        ["Офферов (pooled)", formatNum(pooled.matched_offers)],
-        ["Уникальных продавцов", formatNum(pooled.unique_sellers)],
-        ["Мин. цена", formatMoney(pooled.min_price, $("currency").value)],
-        ["Средняя цена", formatMoney(pooled.avg_price, $("currency").value)],
+        [currentUiLocale === "en" ? "Offers (pooled)" : "Офферов (pooled)", formatNum(pooled.matched_offers)],
+        [currentUiLocale === "en" ? "Unique sellers" : "Уникальных продавцов", formatNum(pooled.unique_sellers)],
+        [currentUiLocale === "en" ? "Min price" : "Мин. цена", formatMoney(pooled.min_price, $("currency").value)],
+        [currentUiLocale === "en" ? "Average price" : "Средняя цена", formatMoney(pooled.avg_price, $("currency").value)],
         ["P50", formatMoney(pooled.p50_price, $("currency").value)],
         ["P90", formatMoney(pooled.p90_price, $("currency").value)],
-        ["Макс. цена", formatMoney(pooled.max_price, $("currency").value)],
-        ["Доля онлайн", formatPct(pooled.online_share)],
+        [currentUiLocale === "en" ? "Max price" : "Макс. цена", formatMoney(pooled.max_price, $("currency").value)],
+        [currentUiLocale === "en" ? "Online share" : "Доля онлайн", formatPct(pooled.online_share)],
       ];
       $("overviewKpi").innerHTML = cards.map(([n, v]) =>
         `<div class="card"><div class="name">${escapeHtml(n)}</div><div class="value">${v}</div></div>`
@@ -1041,9 +1263,9 @@
       renderTable(
         $("comparisonTable"),
         [
-          { label: "Площадка", render: (r) => r.label || r.marketplace },
-          { label: "Офферы", render: (r) => formatNum(r.matched_offers) },
-          { label: "Продавцы", render: (r) => formatNum(r.unique_sellers) },
+          { label: currentUiLocale === "en" ? "Marketplace" : "Площадка", render: (r) => r.label || r.marketplace },
+          { label: currentUiLocale === "en" ? "Offers" : "Офферы", render: (r) => formatNum(r.matched_offers) },
+          { label: currentUiLocale === "en" ? "Sellers" : "Продавцы", render: (r) => formatNum(r.unique_sellers) },
           { label: "P50", render: (r) => formatMoney(r.p50_price, $("currency").value) },
           { label: "Demand", render: (r) => (r.demand_index === null || r.demand_index === undefined ? "—" : Number(r.demand_index).toFixed(2)) },
         ],
@@ -1051,7 +1273,7 @@
       );
       const aggr = overview?.aggregates || {};
       $("aggregatesBlock").innerHTML = `
-        Средние по площадкам:
+        ${currentUiLocale === "en" ? "Marketplace averages" : "Средние по площадкам"}:
         matched_offers=<b>${formatNum(aggr.avg_matched_offers)}</b>,
         unique_sellers=<b>${formatNum(aggr.avg_unique_sellers)}</b>,
         p50=<b>${formatMoney(aggr.avg_p50_price, $("currency").value)}</b>
@@ -1100,7 +1322,7 @@
       if (!bins.length) {
         ctx.fillStyle = "#667ca1";
         ctx.font = "13px sans-serif";
-        ctx.fillText("Нет данных", 12, 24);
+        ctx.fillText(t("noData"), 12, 24);
         chartState.price.bars = [];
         return;
       }
@@ -1143,7 +1365,7 @@
       if (!points || points.length < 2) {
         ctx.fillStyle = "#667ca1";
         ctx.font = "13px sans-serif";
-        ctx.fillText("Недостаточно истории", 12, 24);
+        ctx.fillText(t("noHistory"), 12, 24);
         chartState.history.coords = [];
         return;
       }
@@ -1184,6 +1406,208 @@
       chartState.history.points = points;
       chartState.history.coords = coords;
       chartState.history.hoverIndex = hoverIndex;
+    }
+
+    function drawSellerCompetition(points, hoverIndex = -1) {
+      const canvas = chartState.sellers.canvas;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const margin = 34;
+      const chartW = w - margin * 2;
+      const chartH = h - margin * 2;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#f8fbff";
+      ctx.fillRect(0, 0, w, h);
+
+      if (!points || !points.length) {
+        ctx.fillStyle = "#667ca1";
+        ctx.font = "13px sans-serif";
+        ctx.fillText(t("noData"), 12, 24);
+        chartState.sellers.points = [];
+        return;
+      }
+
+      const xValues = points.map((item) => Number(item.median_price || 0));
+      const yValues = points.map((item) => Number(item.offers_count || 0));
+      const minX = Math.min(...xValues);
+      const maxX = Math.max(...xValues);
+      const minY = 0;
+      const maxY = Math.max(...yValues, 1);
+      const rangeX = maxX - minX || 1;
+      const rangeY = maxY - minY || 1;
+
+      ctx.strokeStyle = "#9db2d5";
+      ctx.beginPath();
+      ctx.moveTo(margin, margin);
+      ctx.lineTo(margin, margin + chartH);
+      ctx.lineTo(margin + chartW, margin + chartH);
+      ctx.stroke();
+
+      const coords = points.map((point, idx) => {
+        const px = margin + ((Number(point.median_price || 0) - minX) / rangeX) * chartW;
+        const py = margin + chartH - ((Number(point.offers_count || 0) - minY) / rangeY) * chartH;
+        const hovered = idx === hoverIndex;
+        ctx.fillStyle = hovered ? "#ff8d2f" : "#0b78f5";
+        ctx.beginPath();
+        ctx.arc(px, py, hovered ? 6 : 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        return { x: px, y: py, index: idx, point };
+      });
+      chartState.sellers.points = coords;
+      chartState.sellers.hoverIndex = hoverIndex;
+    }
+
+    function nearestSellerPoint(x, y, maxDistance = 18) {
+      const points = chartState.sellers.points || [];
+      let nearest = null;
+      let best = Number.POSITIVE_INFINITY;
+      for (const point of points) {
+        const d = Math.hypot(point.x - x, point.y - y);
+        if (d < best) {
+          best = d;
+          nearest = point;
+        }
+      }
+      if (!nearest || best > maxDistance) return null;
+      return nearest;
+    }
+
+    function sellerKeyFromPoint(point) {
+      if (point && point.seller_id !== null && point.seller_id !== undefined) {
+        return `id:${point.seller_id}`;
+      }
+      return `name:${String(point?.seller_name || "").trim().toLowerCase()}`;
+    }
+
+    function sellerKeyFromOffer(offer) {
+      if (offer && offer.seller_id !== null && offer.seller_id !== undefined) {
+        return `id:${offer.seller_id}`;
+      }
+      return `name:${String(offer?.seller_name || "").trim().toLowerCase()}`;
+    }
+
+    function offersForSellerPoint(point) {
+      if (!point) return [];
+      const key = sellerKeyFromPoint(point);
+      return (marketAnalyticsOffers || []).filter((offer) => sellerKeyFromOffer(offer) === key);
+    }
+
+    function renderSellerFocusTable() {
+      const metaNode = $("sellerFocusMeta");
+      const applyBtn = $("sellerFocusApplyFilterBtn");
+      const clearBtn = $("sellerFocusClearBtn");
+      const tableNode = $("sellerFocusTable");
+
+      if (!sellerFocusPoint) {
+        metaNode.textContent = currentUiLocale === "en"
+          ? "Click a point in seller competition chart to open offers for that seller."
+          : "Нажмите на точку в графике \"Конкуренция продавцов\", чтобы открыть офферы этого продавца.";
+        applyBtn.disabled = true;
+        clearBtn.disabled = true;
+        renderTable(
+          tableNode,
+          [
+            { label: "Оффер", render: () => "—" },
+            { label: "Цена", render: () => "—" },
+            { label: "Отзывы", render: () => "—" },
+          ],
+          []
+        );
+        return;
+      }
+
+      const sellerOffers = offersForSellerPoint(sellerFocusPoint).sort(
+        (left, right) => Number(left.price || 0) - Number(right.price || 0)
+      );
+      const medianText = sellerFocusPoint.median_price === null || sellerFocusPoint.median_price === undefined
+        ? "—"
+        : formatMoney(sellerFocusPoint.median_price, $("currency").value);
+      metaNode.innerHTML = `
+        Продавец: <b>${escapeHtml(sellerFocusPoint.seller_name || "unknown")}</b>
+        (${escapeHtml(sellerFocusPoint.seller_id ?? "?")}),
+        офферов в графике: <b>${formatNum(sellerFocusPoint.offers_count)}</b>,
+        медианная цена: <b>${medianText}</b>,
+        найдено офферов для доп.анализа: <b>${formatNum(sellerOffers.length)}</b>
+      `;
+      applyBtn.disabled = false;
+      clearBtn.disabled = false;
+      renderTable(
+        tableNode,
+        [
+          {
+            label: "Оффер",
+            isHtml: true,
+            render: (row) => {
+              const href = safeUrl(row.offer_url);
+              const text = escapeHtml(`#${row.offer_id}`);
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          { label: "Описание", render: (row) => row.description || "—" },
+          { label: "Цена", render: (row) => formatMoney(row.price, row.currency || $("currency").value) },
+          { label: "Отзывы", render: (row) => formatNum(row.reviews_count) },
+          { label: "Онлайн", render: (row) => (row.is_online === true ? t("yes") : (row.is_online === false ? t("no") : "—")) },
+          { label: "Авто", render: (row) => (row.auto_delivery === true ? t("yes") : (row.auto_delivery === false ? t("no") : "—")) },
+        ],
+        sellerOffers
+      );
+    }
+
+    function drawCoverageBars(rows, hoverIndex = -1) {
+      const canvas = chartState.coverage.canvas;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const margin = 28;
+      const chartW = w - margin * 2;
+      const chartH = h - margin * 2;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#f8fbff";
+      ctx.fillRect(0, 0, w, h);
+
+      if (!rows || !rows.length) {
+        ctx.fillStyle = "#667ca1";
+        ctx.font = "13px sans-serif";
+        ctx.fillText(t("noData"), 12, 24);
+        chartState.coverage.bars = [];
+        return;
+      }
+
+      const sortedRows = [...rows]
+        .sort((a, b) => Number(b.counter_total || b.loaded_count || 0) - Number(a.counter_total || a.loaded_count || 0))
+        .slice(0, 18);
+      const maxTotal = Math.max(...sortedRows.map((item) => Number(item.counter_total || item.loaded_count || 0)), 1);
+      const barWidth = chartW / sortedRows.length;
+      const bars = [];
+
+      ctx.strokeStyle = "#9db2d5";
+      ctx.beginPath();
+      ctx.moveTo(margin, margin);
+      ctx.lineTo(margin, margin + chartH);
+      ctx.lineTo(margin + chartW, margin + chartH);
+      ctx.stroke();
+
+      sortedRows.forEach((row, index) => {
+        const total = Number(row.counter_total || row.loaded_count || 0);
+        const loaded = Number(row.loaded_count || 0);
+        const x = margin + index * barWidth + 2;
+        const width = Math.max(2, barWidth - 4);
+        const totalHeight = (total / maxTotal) * chartH;
+        const loadedHeight = (loaded / maxTotal) * chartH;
+        const yBottom = margin + chartH;
+        const totalTop = yBottom - totalHeight;
+        const loadedTop = yBottom - loadedHeight;
+        const hovered = index === hoverIndex;
+
+        ctx.fillStyle = hovered ? "#cad9f6" : "#deebff";
+        ctx.fillRect(x, totalTop, width, totalHeight);
+        ctx.fillStyle = row.coverage_status === "lower_bound" ? "#ff8d2f" : "#0b78f5";
+        ctx.fillRect(x, loadedTop, width, loadedHeight);
+        bars.push({ x, y: totalTop, width, height: totalHeight, index, row });
+      });
+      chartState.coverage.bars = bars;
+      chartState.coverage.hoverIndex = hoverIndex;
     }
 
     function tooltipShow(x, y, text) {
@@ -1250,29 +1674,227 @@
         tooltipShow(
           event.clientX,
           event.clientY,
-          `Дата: ${new Date(nearest.point.generated_at).toLocaleString("ru-RU")}\nОфферы: ${nearest.point.matched_offers}\nP50: ${nearest.point.p50_price ?? "—"}`
+          `Дата: ${new Date(nearest.point.generated_at).toLocaleString(localeTag())}\nОфферы: ${nearest.point.matched_offers}\nP50: ${nearest.point.p50_price ?? "—"}\nDemand: ${nearest.point.demand_index ?? "—"}`
         );
       });
       historyCanvas.addEventListener("mouseleave", () => {
         drawHistory(chartState.history.points || [], -1);
         tooltipHide();
       });
+
+      const sellersCanvas = chartState.sellers.canvas;
+      sellersCanvas.addEventListener("mousemove", (event) => {
+        const rect = sellersCanvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) * (sellersCanvas.width / rect.width);
+        const y = (event.clientY - rect.top) * (sellersCanvas.height / rect.height);
+        const points = chartState.sellers.points || [];
+        const nearest = nearestSellerPoint(x, y, 18);
+        if (!nearest) {
+          sellersCanvas.style.cursor = "default";
+          if (chartState.sellers.hoverIndex !== -1) drawSellerCompetition(
+            points.map((item) => item.point),
+            -1
+          );
+          tooltipHide();
+          return;
+        }
+        sellersCanvas.style.cursor = "pointer";
+        if (nearest.index !== chartState.sellers.hoverIndex) {
+          drawSellerCompetition(points.map((item) => item.point), nearest.index);
+        }
+        tooltipShow(
+          event.clientX,
+          event.clientY,
+          `${nearest.point.seller_name}\nОфферов: ${nearest.point.offers_count}\nМедианная цена: ${formatMoney(nearest.point.median_price, $("currency").value)}`
+        );
+      });
+      sellersCanvas.addEventListener("mouseleave", () => {
+        sellersCanvas.style.cursor = "default";
+        drawSellerCompetition((chartState.sellers.points || []).map((item) => item.point), -1);
+        tooltipHide();
+      });
+      sellersCanvas.addEventListener("click", (event) => {
+        const rect = sellersCanvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) * (sellersCanvas.width / rect.width);
+        const y = (event.clientY - rect.top) * (sellersCanvas.height / rect.height);
+        const nearest = nearestSellerPoint(x, y, 18);
+        if (!nearest) return;
+        sellerFocusPoint = { ...nearest.point };
+        renderSellerFocusTable();
+      });
+
+      const coverageCanvas = chartState.coverage.canvas;
+      coverageCanvas.addEventListener("mousemove", (event) => {
+        const rect = coverageCanvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) * (coverageCanvas.width / rect.width);
+        const y = (event.clientY - rect.top) * (coverageCanvas.height / rect.height);
+        const bars = chartState.coverage.bars || [];
+        const bar = bars.find((item) => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
+        if (!bar) {
+          if (chartState.coverage.hoverIndex !== -1) {
+            drawCoverageBars(bars.map((item) => item.row), -1);
+          }
+          tooltipHide();
+          return;
+        }
+        if (bar.index !== chartState.coverage.hoverIndex) {
+          drawCoverageBars(bars.map((item) => item.row), bar.index);
+        }
+        tooltipShow(
+          event.clientX,
+          event.clientY,
+          `${bar.row.section_name || bar.row.section_url}\nloaded: ${bar.row.loaded_count}\ncounter: ${bar.row.counter_total ?? "—"}`
+        );
+      });
+      coverageCanvas.addEventListener("mouseleave", () => {
+        drawCoverageBars((chartState.coverage.bars || []).map((item) => item.row), -1);
+        tooltipHide();
+      });
+    }
+
+    function percentile(values, p) {
+      const clean = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+      if (!clean.length) return null;
+      if (clean.length === 1) return clean[0];
+      const rank = (clean.length - 1) * p;
+      const lo = Math.floor(rank);
+      const hi = Math.min(clean.length - 1, lo + 1);
+      const frac = rank - lo;
+      return clean[lo] + (clean[hi] - clean[lo]) * frac;
+    }
+
+    function computeCompetitionAnalytics(offers) {
+      const grouped = new Map();
+      for (const item of offers || []) {
+        const sellerId = item.seller_id ?? `name:${item.seller_name}`;
+        if (!grouped.has(sellerId)) {
+          grouped.set(sellerId, {
+            seller_id: item.seller_id ?? null,
+            seller_name: item.seller_name || "unknown",
+            offers_count: 0,
+            prices: [],
+          });
+        }
+        const row = grouped.get(sellerId);
+        row.offers_count += 1;
+        const price = Number(item.price);
+        if (Number.isFinite(price)) row.prices.push(price);
+      }
+
+      const sellers = [...grouped.values()].map((row) => ({
+        ...row,
+        median_price: percentile(row.prices, 0.5) ?? null,
+      }));
+      const totalOffers = offers.length || 0;
+      const shares = sellers.map((row) => row.offers_count / Math.max(totalOffers, 1));
+      const hhi = shares.length ? shares.reduce((sum, share) => sum + (share * 100) ** 2, 0) : null;
+      const top3Share = shares.length
+        ? sellers
+            .map((row) => row.offers_count)
+            .sort((a, b) => b - a)
+            .slice(0, 3)
+            .reduce((sum, count) => sum + count, 0) / Math.max(totalOffers, 1)
+        : null;
+      const prices = offers.map((item) => Number(item.price)).filter((v) => Number.isFinite(v));
+      const p10 = percentile(prices, 0.1);
+      const p50 = percentile(prices, 0.5);
+      const p90 = percentile(prices, 0.9);
+      const q1 = percentile(prices, 0.25);
+      const q3 = percentile(prices, 0.75);
+      const iqr = (q1 !== null && q3 !== null) ? Math.max(0, q3 - q1) : null;
+      let dumpingThreshold = null;
+      if (q1 !== null && iqr !== null) {
+        dumpingThreshold = iqr > 0 ? (q1 - 1.5 * iqr) : ((p10 ?? q1) * 0.8);
+      }
+      const dumpingCandidates = dumpingThreshold === null
+        ? []
+        : offers.filter((item) => Number(item.price) < dumpingThreshold);
+      const priceSpread = (p10 !== null && p90 !== null && p50 !== null && p50 > 0)
+        ? (p90 - p10) / p50
+        : null;
+      sellers.sort((a, b) => b.offers_count - a.offers_count || (a.median_price ?? 0) - (b.median_price ?? 0));
+      return {
+        sellers,
+        hhi,
+        top3Share,
+        priceSpread,
+        q1,
+        q3,
+        iqr,
+        dumpingThreshold,
+        dumpingCandidates,
+      };
+    }
+
+    function renderMarketAnalytics(offersForAnalytics, sections) {
+      marketAnalyticsOffers = Array.isArray(offersForAnalytics) ? offersForAnalytics : [];
+      const prices = (offersForAnalytics || []).map((item) => Number(item.price)).filter((v) => Number.isFinite(v));
+      drawPriceHistogram(histogramBins(prices), -1);
+      const competition = computeCompetitionAnalytics(offersForAnalytics || []);
+      const competitionCards = [
+        ["HHI", competition.hhi === null ? "—" : Number(competition.hhi).toFixed(1)],
+        ["Top-3 Share", competition.top3Share === null ? "—" : formatPct(competition.top3Share)],
+        ["Price Spread", competition.priceSpread === null ? "—" : Number(competition.priceSpread).toFixed(3)],
+        ["IQR", competition.iqr === null ? "—" : Number(competition.iqr).toFixed(3)],
+      ];
+      $("competitionKpi").innerHTML = competitionCards.map(([n, v]) =>
+        `<div class="card"><div class="name">${escapeHtml(n)}</div><div class="value">${v}</div></div>`
+      ).join("");
+      renderTable(
+        $("dumpingTable"),
+        [
+          {
+            label: "Оффер",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(r.offer_url);
+              const text = escapeHtml(`#${r.offer_id}`);
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          {
+            label: "Продавец",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          { label: "Цена", render: (r) => formatMoney(r.price, r.currency || $("currency").value) },
+          { label: "Порог", render: () => competition.dumpingThreshold === null ? "—" : formatMoney(competition.dumpingThreshold, $("currency").value) },
+        ],
+        competition.dumpingCandidates
+      );
+      drawSellerCompetition(competition.sellers, -1);
+      drawCoverageBars(sections || [], -1);
+      if (sellerFocusPoint) {
+        const currentKey = sellerKeyFromPoint(sellerFocusPoint);
+        const refreshed = (competition.sellers || []).find((item) => sellerKeyFromPoint(item) === currentKey);
+        sellerFocusPoint = refreshed ? { ...refreshed } : null;
+      }
+      renderSellerFocusTable();
     }
 
     function renderMarketplaceDetail(result) {
       currentMarketplaceResult = result;
+      sellerFocusPoint = null;
       const summary = result?.summary || null;
       if (!summary) {
-        $("marketplaceMeta").textContent = "Нет данных по площадке.";
+        $("marketplaceMeta").textContent = t("noData");
+        renderSellerFocusTable();
         return;
       }
 
       $("marketplaceMeta").innerHTML = `
         <div>Площадка: <b>${escapeHtml(summary.label)}</b></div>
         <div>Provider request_id: <b class="mono">${escapeHtml(summary.request_id)}</b></div>
-        <div>Сгенерировано: <b>${new Date(summary.generated_at).toLocaleString("ru-RU")}</b></div>
-        <div>Валидно до: <b>${new Date(summary.valid_until).toLocaleString("ru-RU")}</b></div>
+        <div>Сгенерировано: <b>${new Date(summary.generated_at).toLocaleString(localeTag())}</b></div>
+        <div>Валидно до: <b>${new Date(summary.valid_until).toLocaleString(localeTag())}</b></div>
         <div>Локаль контента: <b>${escapeHtml(summary.content_locale_requested || "auto")}</b> → <b>${escapeHtml(summary.content_locale_applied || "—")}</b></div>
+        <div>Локаль UI: <b>${escapeHtml(summary.ui_locale || currentUiLocale)}</b></div>
+        <div>Полный срез офферов: <b>${formatNum(fullOffers.length)}</b></div>
+        <div>Lower-bound разделов: <b>${formatNum(summary.coverage?.sections_lower_bound || 0)}</b> / ${formatNum(summary.coverage?.sections_scanned || 0)}</div>
       `;
       const stats = summary.offers_stats || {};
       const cards = [
@@ -1301,7 +1923,36 @@
       const tables = raw?.tables || {};
       const topOffers = tables?.top_offers || [];
       const topSellers = tables?.top_sellers || [];
+      const topDemandSellers = tables?.top_demand_sellers || [];
       const sections = tables?.sections || [];
+      const demand = summary.demand || null;
+      const demandCards = [
+        ["Покупки (30д)", demand ? formatNum(demand.estimated_purchases_30d) : "—"],
+        ["Покупки (всего)", demand ? formatNum(demand.estimated_purchases_total) : "—"],
+        ["Проверено продавцов", demand ? formatNum(demand.sellers_analyzed) : "—"],
+        ["Сканировано отзывов", demand ? formatNum(demand.reviews_scanned) : "—"],
+      ];
+      $("marketDemandKpi").innerHTML = demandCards.map(([n, v]) =>
+        `<div class="card"><div class="name">${escapeHtml(n)}</div><div class="value">${v}</div></div>`
+      ).join("");
+      renderTable(
+        $("topDemandSellersTable"),
+        [
+          {
+            label: "Продавец",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          { label: "Покупки 30д", render: (r) => formatNum(r.estimated_purchases_30d) },
+          { label: "Покупки всего", render: (r) => formatNum(r.estimated_purchases_total) },
+          { label: "Отзывы", render: (r) => formatNum(r.reviews_scanned) },
+        ],
+        topDemandSellers
+      );
       renderTable(
         $("topOffersTable"),
         [
@@ -1348,19 +1999,26 @@
       renderTable(
         $("sectionsTable"),
         [
-          { label: "Раздел", render: (r) => r.section_url },
+          {
+            label: "Раздел",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(r.section_url);
+              const text = escapeHtml(r.section_name || `Раздел #${r.section_id ?? "?"}`);
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
           { label: "ID", render: (r) => r.section_id ?? "—", className: "mono" },
-          { label: "counter", render: (r) => formatNum(r.counter_total) },
-          { label: "loaded", render: (r) => formatNum(r.loaded_count) },
-          { label: "coverage", render: (r) => r.coverage_status },
+          { label: "counter", labelHtml: labelWithTip("counter", "Сколько лотов в разделе по счетчику FunPay."), render: (r) => formatNum(r.counter_total) },
+          { label: "loaded", labelHtml: labelWithTip("loaded", "Сколько лотов реально загружено в HTML."), render: (r) => formatNum(r.loaded_count) },
+          { label: "coverage", labelHtml: labelWithTip("coverage", "full = полная выгрузка, lower_bound = нижняя оценка."), render: (r) => r.coverage_status },
         ],
         sections
       );
 
-      const prices = fullOffers.map((item) => Number(item.price)).filter((v) => Number.isFinite(v));
-      drawPriceHistogram(histogramBins(prices), -1);
       const historyPoints = raw?.charts?.history_points || [];
       drawHistory(historyPoints, -1);
+      renderMarketAnalytics(fullOffers, sections);
     }
 
     function renderOffersTable() {
@@ -1401,12 +2059,14 @@
 
         if (sortMode === "price_desc") return rPrice - lPrice;
         if (sortMode === "reviews_desc") return rReviews - lReviews;
-        if (sortMode === "seller_asc") return lSeller.localeCompare(rSeller, "ru");
+        if (sortMode === "seller_asc") return lSeller.localeCompare(rSeller, localeTag());
         if (sortMode === "offer_desc") return rOffer - lOffer;
         return lPrice - rPrice;
       });
 
       filteredOffers = sorted;
+      const sections = currentMarketplaceResult?.raw?.legacy_result?.tables?.sections || [];
+      renderMarketAnalytics(filteredOffers, sections);
       const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
       if (offersPage > pages - 1) offersPage = pages - 1;
       const offset = offersPage * pageSize;
@@ -1440,8 +2100,8 @@
           { label: "Описание", render: (r) => r.description || "—" },
           { label: "Цена", render: (r) => formatMoney(r.price, r.currency || $("currency").value) },
           { label: "Отзывы", render: (r) => formatNum(r.reviews_count) },
-          { label: "Онлайн", render: (r) => (r.is_online === true ? "да" : (r.is_online === false ? "нет" : "—")) },
-          { label: "Авто", render: (r) => (r.auto_delivery === true ? "да" : (r.auto_delivery === false ? "нет" : "—")) },
+          { label: "Онлайн", render: (r) => (r.is_online === true ? t("yes") : (r.is_online === false ? t("no") : "—")) },
+          { label: "Авто", render: (r) => (r.auto_delivery === true ? t("yes") : (r.auto_delivery === false ? t("no") : "—")) },
         ],
         rows
       );
@@ -1455,7 +2115,7 @@
     function exportFilteredOffersCsv() {
       const rows = Array.isArray(filteredOffers) ? filteredOffers : [];
       if (!rows.length) {
-        setStatus("Нет данных для экспорта CSV. Сначала примените фильтры к срезу офферов.", "warn");
+        setStatus(t("csvNoData"), "warn");
         return;
       }
       const header = [
@@ -1494,7 +2154,7 @@
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
-      setStatus(`CSV экспортирован: ${rows.length} строк.`, "ok");
+      setStatus(t("csvDone", { count: rows.length }), "ok");
     }
 
     function selectMarketplaceValues() {
@@ -1508,21 +2168,30 @@
 
     function buildPayload() {
       const marketplaces = selectMarketplaceValues();
+      const uiLocale = $("uiLocale").value || "ru";
       const payload = {
         marketplaces,
         common_filters: {
           query: $("query").value.trim(),
           currency: $("currency").value,
+          ui_locale: uiLocale,
           force_refresh: $("forceRefresh").checked,
           execution: $("execution").value,
         },
         marketplace_filters: {},
       };
       if (marketplaces.includes("funpay")) {
+        const selectedSections = readSelectedSectionIds();
+        const selectedGameId = readInt("fpGame");
+        const useGameScope = $("fpUseGameScope").checked;
+        const gameScopeId = useGameScope
+          ? selectedGameId
+          : (selectedSections.length > 0 ? null : selectedGameId);
         payload.marketplace_filters.funpay = {
           content_locale: $("fpContentLocale").value,
-          category_game_id: readInt("fpGame"),
-          category_id: readInt("fpSection"),
+          category_game_id: gameScopeId,
+          category_id: selectedSections.length ? selectedSections[0] : null,
+          category_ids: selectedSections,
           options: {
             profile: $("fpProfile").value,
             include_reviews: $("fpIncludeReviews").checked,
@@ -1580,23 +2249,62 @@
     }
 
     function updateSectionOptions() {
+      syncSectionSelectionFromDom();
       const gameId = readInt("fpGame");
-      const options = ['<option value="">Любой раздел</option>'];
+      const searchValue = String($("fpSectionSearch").value || "").trim().toLowerCase();
+      const options = [];
+      const seen = new Set();
       if (gameId !== null) {
         const game = categoriesCatalog.find((item) => Number(item.game_section_id) === gameId);
         if (game) {
           for (const section of game.sections || []) {
-            options.push(`<option value="${section.section_id}">${escapeHtml(section.full_name)}</option>`);
+            const sectionId = Number(section.section_id);
+            if (!Number.isFinite(sectionId) || sectionId <= 0 || seen.has(sectionId)) continue;
+            seen.add(sectionId);
+            options.push({
+              section_id: Math.floor(sectionId),
+              full_name: section.full_name,
+              game_name: game.game_name,
+            });
           }
         }
       } else {
         for (const game of categoriesCatalog) {
           for (const section of game.sections || []) {
-            options.push(`<option value="${section.section_id}">${escapeHtml(section.full_name)}</option>`);
+            const sectionId = Number(section.section_id);
+            if (!Number.isFinite(sectionId) || sectionId <= 0 || seen.has(sectionId)) continue;
+            seen.add(sectionId);
+            options.push({
+              section_id: Math.floor(sectionId),
+              full_name: section.full_name,
+              game_name: game.game_name,
+            });
           }
         }
       }
-      $("fpSection").innerHTML = options.join("");
+
+      const filtered = searchValue
+        ? options.filter((item) => `${item.full_name} ${item.game_name}`.toLowerCase().includes(searchValue))
+        : options;
+      const checklist = $("fpSectionChecklist");
+      if (!filtered.length) {
+        checklist.innerHTML = `<div class="section-empty">${currentUiLocale === "en" ? "No sections found by current filter." : "По текущему фильтру разделы не найдены."}</div>`;
+        updateSectionSelectedCount();
+        return;
+      }
+      checklist.innerHTML = filtered.map((item) => {
+        const checked = selectedSectionIds.has(item.section_id) ? "checked" : "";
+        return `
+          <label class="check section-item">
+            <input type="checkbox" data-section-id="${item.section_id}" ${checked} />
+            <div>
+              <div><b>${escapeHtml(item.full_name)}</b></div>
+              <div class="hint">${escapeHtml(item.game_name)}</div>
+            </div>
+          </label>
+        `;
+      }).join("");
+      updateSectionSelectedCount();
     }
 
     async function loadMarketplaces() {
@@ -1609,6 +2317,7 @@
     async function loadCategories() {
       const data = await fetchJson("/v2/marketplaces/funpay/categories");
       categoriesCatalog = data.games || [];
+      selectedSectionIds = new Set();
       const options = ['<option value="">Любая игра</option>'];
       for (const game of categoriesCatalog) {
         options.push(`<option value="${game.game_section_id}">${escapeHtml(game.game_name)}</option>`);
@@ -1623,6 +2332,47 @@
       runIdInput.value = runId;
       localStorage.setItem("marketstat_v2_last_run", runId);
       updateNavLinks();
+    }
+
+    function renderCategoryScope(item) {
+      const sectionById = new Map();
+      const gameById = new Map();
+      for (const game of categoriesCatalog || []) {
+        gameById.set(Number(game.game_section_id), game);
+        for (const section of game.sections || []) {
+          sectionById.set(Number(section.section_id), section);
+        }
+      }
+      const links = [];
+      const ids = Array.isArray(item.category_ids) ? item.category_ids : [];
+      for (const rawId of ids) {
+        const id = Number(rawId);
+        if (!Number.isFinite(id)) continue;
+        const section = sectionById.get(id);
+        if (section) {
+          links.push(`<a href="${escapeHtml(section.section_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.full_name)}</a>`);
+        } else {
+          links.push(`<a href="https://funpay.com/lots/${id}/" target="_blank" rel="noopener noreferrer">${currentUiLocale === "en" ? "Section" : "Раздел"} #${id}</a>`);
+        }
+      }
+      if (!links.length && item.category_id) {
+        const id = Number(item.category_id);
+        const section = sectionById.get(id);
+        if (section) {
+          links.push(`<a href="${escapeHtml(section.section_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.full_name)}</a>`);
+        } else {
+          links.push(`<a href="https://funpay.com/lots/${id}/" target="_blank" rel="noopener noreferrer">${currentUiLocale === "en" ? "Section" : "Раздел"} #${id}</a>`);
+        }
+      }
+      if (!links.length && item.category_game_id) {
+        const game = gameById.get(Number(item.category_game_id));
+        if (game) {
+          links.push(`<a href="${escapeHtml(game.game_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(game.game_name)}</a>`);
+        } else {
+          links.push(`<a href="https://funpay.com/lots/${escapeHtml(item.category_game_id)}" target="_blank" rel="noopener noreferrer">${currentUiLocale === "en" ? "Game" : "Игра"} #${escapeHtml(item.category_game_id)}</a>`);
+        }
+      }
+      return links.length ? links.join(", ") : "—";
     }
 
     async function renderHistory() {
@@ -1641,11 +2391,11 @@
           return true;
         });
 
-        $("historyCount").textContent = `Показано запусков: ${filteredItems.length} из ${items.length}`;
+        $("historyCount").textContent = t("historyLoaded", { shown: filteredItems.length, total: items.length });
         if (!filteredItems.length) {
           historyHost.innerHTML = items.length
-            ? "<div class='muted'>По выбранным фильтрам записи не найдены.</div>"
-            : "<div class='muted'>История пока пустая.</div>";
+            ? `<div class='muted'>${escapeHtml(t("historyNoFilter"))}</div>`
+            : `<div class='muted'>${escapeHtml(t("historyEmpty"))}</div>`;
           return;
         }
         historyHost.innerHTML = filteredItems.map((item) => {
@@ -1653,22 +2403,23 @@
           const marketplacesText = (item.marketplaces || [])
             .map((slug) => marketplaceLabel(slug))
             .join(", ");
+          const categoryScopeHtml = renderCategoryScope(item);
           const summary = `
             <div class="summary-grid">
-              <span><b>${escapeHtml(item.query && item.query.trim() ? item.query : "пустой запрос")}</b><br/><span class="muted">${new Date(item.generated_at).toLocaleString("ru-RU")}</span></span>
-              <span>Площадки: <b>${escapeHtml(marketplacesText || "—")}</b></span>
-              <span>Офферы: <b>${formatNum(item.pooled_matched_offers)}</b></span>
-              <span>Продавцы: <b>${formatNum(item.pooled_unique_sellers)}</b></span>
+              <span><b>${escapeHtml(item.query && item.query.trim() ? item.query : t("emptyQueryLabel"))}</b><br/><span class="muted">${new Date(item.generated_at).toLocaleString(localeTag())}</span></span>
+              <span>${currentUiLocale === "en" ? "Marketplaces" : "Площадки"}: <b>${escapeHtml(marketplacesText || "—")}</b></span>
+              <span>${currentUiLocale === "en" ? "Offers" : "Офферы"}: <b>${formatNum(item.pooled_matched_offers)}</b></span>
+              <span>${currentUiLocale === "en" ? "Sellers" : "Продавцы"}: <b>${formatNum(item.pooled_unique_sellers)}</b></span>
               <span>P50: <b>${formatMoney(item.pooled_p50_price, item.currency)}</b></span>
             </div>
           `;
           const sub = (item.marketplace_items || []).map((subItem) => `
             <div class="subitem">
               <div><b>${escapeHtml(subItem.label || marketplaceLabel(subItem.marketplace))}</b> (${escapeHtml(subItem.marketplace)})</div>
-              <div>Офферы: <b>${formatNum(subItem.matched_offers)}</b>, продавцы: <b>${formatNum(subItem.unique_sellers)}</b>, P50: <b>${formatMoney(subItem.p50_price, item.currency)}</b></div>
-              <div>Demand: <b>${subItem.demand_index === null || subItem.demand_index === undefined ? "—" : Number(subItem.demand_index).toFixed(2)}</b>, предупреждений: <b>${formatNum(subItem.warnings_count)}</b></div>
+              <div>${currentUiLocale === "en" ? "Offers" : "Офферы"}: <b>${formatNum(subItem.matched_offers)}</b>, ${currentUiLocale === "en" ? "sellers" : "продавцы"}: <b>${formatNum(subItem.unique_sellers)}</b>, P50: <b>${formatMoney(subItem.p50_price, item.currency)}</b></div>
+              <div>Demand: <b>${subItem.demand_index === null || subItem.demand_index === undefined ? "—" : Number(subItem.demand_index).toFixed(2)}</b>, ${currentUiLocale === "en" ? "warnings" : "предупреждений"}: <b>${formatNum(subItem.warnings_count)}</b></div>
               <div class="actions" style="margin-top:6px;">
-                <a class="btn-secondary" style="text-decoration:none; display:inline-block; padding:6px 10px;" href="/analysis/${escapeHtml(subItem.marketplace)}?run_id=${runId}">Открыть площадку</a>
+                <a class="btn-secondary" style="text-decoration:none; display:inline-block; padding:6px 10px;" href="/analysis/${escapeHtml(subItem.marketplace)}?run_id=${runId}">${escapeHtml(t("openMarketplace"))}</a>
               </div>
             </div>
           `).join("");
@@ -1677,8 +2428,9 @@
               <summary>${summary}</summary>
               <div style="padding:8px 10px;">
                 <div class="hint">run_id: <span class="mono">${runId}</span></div>
+                <div class="hint">${currentUiLocale === "en" ? "Category" : "Категория"}: ${categoryScopeHtml}</div>
                 <div class="actions" style="margin-top:0;">
-                  <a class="btn-secondary" style="text-decoration:none; display:inline-block; padding:6px 10px;" href="/?run_id=${runId}">Открыть overview</a>
+                  <a class="btn-secondary" style="text-decoration:none; display:inline-block; padding:6px 10px;" href="/?run_id=${runId}">${escapeHtml(t("openOverview"))}</a>
                 </div>
                 ${sub}
               </div>
@@ -1686,7 +2438,7 @@
           `;
         }).join("");
       } catch (err) {
-        historyHost.innerHTML = `<div class="status err">Ошибка истории: ${escapeHtml(String(err))}</div>`;
+        historyHost.innerHTML = `<div class="status err">${escapeHtml(t("errorPrefix"))}: ${escapeHtml(String(err))}</div>`;
       }
     }
 
@@ -1707,9 +2459,15 @@
     async function loadRunStatus(runId, refreshMode = false) {
       const envelope = await fetchJson(`/v2/analyze/${encodeURIComponent(runId)}`);
       updateRunId(runId);
+      const localeFromRun = envelope?.marketplaces?.funpay?.ui_locale
+        || Object.values(envelope?.marketplaces || {})?.[0]?.ui_locale;
+      if (localeFromRun && (localeFromRun === "ru" || localeFromRun === "en") && $("uiLocale").value !== localeFromRun) {
+        $("uiLocale").value = localeFromRun;
+        applyUiLocale();
+      }
       renderProgress(envelope);
       if (envelope.status === "done") {
-        setStatus("Анализ завершен.", "ok");
+        setStatus(t("runDone"), "ok");
         clearInterval(pollTimer);
         if (!isMarketplaceRoute) {
           await loadOverview(runId);
@@ -1717,17 +2475,17 @@
           await loadMarketplacePage(runId, activeMarketplace);
         }
         if (envelope.overview?.generated_at) {
-          lastUpdateChip.textContent = `Обновлено: ${new Date(envelope.overview.generated_at).toLocaleString("ru-RU")}`;
+          lastUpdateChip.textContent = `${currentUiLocale === "en" ? "Updated" : "Обновлено"}: ${new Date(envelope.overview.generated_at).toLocaleString(localeTag())}`;
         } else {
-          lastUpdateChip.textContent = `Обновлено: ${new Date().toLocaleString("ru-RU")}`;
+          lastUpdateChip.textContent = `${currentUiLocale === "en" ? "Updated" : "Обновлено"}: ${new Date().toLocaleString(localeTag())}`;
         }
         if (!refreshMode) await renderHistory();
       } else if (envelope.status === "failed") {
         clearInterval(pollTimer);
-        setStatus(`Ошибка: ${envelope.error || "неизвестно"}`, "err");
+        setStatus(`${t("errorPrefix")}: ${envelope.error || t("unknown")}`, "err");
       } else {
         const p = Number(envelope?.progress?.percent);
-        setStatus(`Статус: ${envelope.status}${Number.isFinite(p) ? ` (${p.toFixed(0)}%)` : ""}`, "warn");
+        setStatus(`${currentUiLocale === "en" ? "Status" : "Статус"}: ${envelope.status}${Number.isFinite(p) ? ` (${p.toFixed(0)}%)` : ""}`, "warn");
       }
     }
 
@@ -1740,7 +2498,7 @@
           await loadRunStatus(runId, true);
           if (retries > 180) {
             clearInterval(pollTimer);
-            setStatus("Опрос остановлен: превышен лимит ожидания.", "warn");
+            setStatus(currentUiLocale === "en" ? "Polling stopped: timeout limit exceeded." : "Опрос остановлен: превышен лимит ожидания.", "warn");
           }
         } catch (err) {
           clearInterval(pollTimer);
@@ -1753,10 +2511,10 @@
       try {
         const payload = buildPayload();
         if (!payload.marketplaces.length) {
-          setStatus("Выберите хотя бы одну площадку.", "err");
+          setStatus(t("selectMarketplace"), "err");
           return;
         }
-        setStatus("Запускаю анализ...", "warn");
+        setStatus(t("runStart"), "warn");
         const data = await fetchJson("/v2/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1769,7 +2527,7 @@
         } else if (data.status === "done") {
           await loadRunStatus(data.run_id);
         } else if (data.status === "failed") {
-          setStatus(`Ошибка: ${data.error || "неизвестно"}`, "err");
+          setStatus(`${t("errorPrefix")}: ${data.error || t("unknown")}`, "err");
           return;
         }
 
@@ -1789,7 +2547,7 @@
     async function manualRefresh() {
       const runId = runIdInput.value.trim();
       if (!runId) {
-        setStatus("Укажите run_id", "err");
+        setStatus(t("runIdRequired"), "err");
         return;
       }
       try {
@@ -1810,27 +2568,87 @@
         const preset = String(event.target.value || "custom");
         if (preset !== "custom") {
           applyFunPayPreset(preset);
-          setStatus(`Применен пресет FunPay: ${preset}`, "ok");
+          setStatus(currentUiLocale === "en" ? `FunPay preset applied: ${preset}` : `Применен пресет FunPay: ${preset}`, "ok");
+        }
+      });
+      $("uiLocale").addEventListener("change", async () => {
+        applyUiLocale();
+        if (selectedRunId) {
+          try {
+            await loadRunStatus(selectedRunId, true);
+          } catch (_) {
+            await renderHistory();
+          }
+        } else {
+          await renderHistory();
         }
       });
       $("copyRunIdBtn").addEventListener("click", async () => {
         const runId = runIdInput.value.trim() || selectedRunId || "";
         if (!runId) {
-          setStatus("Сначала укажите run_id.", "warn");
+          setStatus(t("copyRunIdRequired"), "warn");
           return;
         }
         try {
           await navigator.clipboard.writeText(runId);
-          setStatus("run_id скопирован в буфер обмена.", "ok");
+          setStatus(t("copiedRunId"), "ok");
         } catch (_) {
           runIdInput.select();
           document.execCommand("copy");
-          setStatus("run_id скопирован в буфер обмена.", "ok");
+          setStatus(t("copiedRunId"), "ok");
         }
       });
-      $("fpGame").addEventListener("change", updateSectionOptions);
+      $("fpGame").addEventListener("change", () => {
+        selectedSectionIds = new Set();
+        updateSectionOptions();
+      });
+      $("fpSectionSearch").addEventListener("input", updateSectionOptions);
+      $("fpSectionChecklist").addEventListener("change", () => {
+        syncSectionSelectionFromDom();
+        updateSectionSelectedCount();
+      });
+      $("fpSectionSelectVisible").addEventListener("click", () => {
+        const nodes = Array.from($("fpSectionChecklist").querySelectorAll("input[type='checkbox'][data-section-id]"));
+        for (const node of nodes) {
+          const id = Number(node.getAttribute("data-section-id"));
+          if (!Number.isFinite(id) || id <= 0) continue;
+          node.checked = true;
+          selectedSectionIds.add(Math.floor(id));
+        }
+        updateSectionSelectedCount();
+      });
+      $("fpSectionClearVisible").addEventListener("click", () => {
+        const nodes = Array.from($("fpSectionChecklist").querySelectorAll("input[type='checkbox'][data-section-id]"));
+        for (const node of nodes) {
+          const id = Number(node.getAttribute("data-section-id"));
+          if (!Number.isFinite(id) || id <= 0) continue;
+          node.checked = false;
+          selectedSectionIds.delete(Math.floor(id));
+        }
+        updateSectionSelectedCount();
+      });
       $("fpIncludeDemand").addEventListener("change", (event) => {
         if (event.target.checked) $("fpIncludeReviews").checked = true;
+      });
+      $("sellerFocusApplyFilterBtn").addEventListener("click", () => {
+        if (!sellerFocusPoint) return;
+        const queryValue = sellerFocusPoint.seller_id !== null && sellerFocusPoint.seller_id !== undefined
+          ? String(sellerFocusPoint.seller_id)
+          : String(sellerFocusPoint.seller_name || "").trim();
+        if (!queryValue) return;
+        $("offersSellerQuery").value = queryValue;
+        offersPage = 0;
+        renderOffersTable();
+        setStatus(
+          currentUiLocale === "en"
+            ? `Seller filter applied: ${sellerFocusPoint.seller_name}`
+            : `Фильтр продавца применен: ${sellerFocusPoint.seller_name}`,
+          "ok"
+        );
+      });
+      $("sellerFocusClearBtn").addEventListener("click", () => {
+        sellerFocusPoint = null;
+        renderSellerFocusTable();
       });
       $("applyOfferFiltersBtn").addEventListener("click", () => {
         offersPage = 0;
@@ -1877,6 +2695,11 @@
     }
 
     async function bootstrap() {
+      const savedLocale = localStorage.getItem("marketstat_v2_ui_locale");
+      if (savedLocale === "ru" || savedLocale === "en") {
+        $("uiLocale").value = savedLocale;
+      }
+      applyUiLocale();
       routeVisibility();
       applyFormMode();
       attachEvents();
@@ -1894,7 +2717,7 @@
         if (selectedRunId) {
           await loadRunStatus(selectedRunId);
         } else {
-          setStatus("Готово к запуску нового анализа.", "ok");
+          setStatus(currentUiLocale === "en" ? "Ready for a new run." : "Готово к запуску нового анализа.", "ok");
         }
       } catch (err) {
         setStatus(String(err), "err");

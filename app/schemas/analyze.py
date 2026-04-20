@@ -28,13 +28,18 @@ class ContentLocale(str, Enum):
     en = "en"
 
 
+class UiLocale(str, Enum):
+    ru = "ru"
+    en = "en"
+
+
 class AnalyzeOptionsDTO(BaseModel):
     profile: AnalyzeProfile = AnalyzeProfile.balanced
     include_reviews: bool | None = None
     include_demand_index: bool | None = None
     include_fallback_scan: bool | None = None
     section_limit: int | None = Field(default=None, ge=1, le=500)
-    seller_limit: int | None = Field(default=None, ge=1, le=500)
+    seller_limit: int | None = Field(default=None, ge=1, le=20)
     review_pages_per_seller: int | None = Field(default=None, ge=1, le=20)
     history_points_limit: int | None = Field(default=None, ge=5, le=365)
 
@@ -56,10 +61,12 @@ class AnalyzeRequestDTO(BaseModel):
     query: str = Field(min_length=0, max_length=512)
     force_refresh: bool = False
     currency: Currency = Currency.rub
+    ui_locale: UiLocale = UiLocale.ru
     content_locale: ContentLocale = ContentLocale.auto
     execution: ExecutionMode = ExecutionMode.auto
     category_game_id: int | None = Field(default=None, ge=1)
     category_id: int | None = Field(default=None, ge=1)
+    category_ids: list[int] = Field(default_factory=list)
     options: AnalyzeOptionsDTO = Field(default_factory=AnalyzeOptionsDTO)
     datacenter_proxies: list[str] | None = None
     residential_proxies: list[str] | None = None
@@ -90,6 +97,10 @@ class DemandStatsDTO(BaseModel):
     volume_30d: int
     demand_index: float | None
     unique_sellers_with_relevant_reviews: int
+    estimated_purchases_total: int = 0
+    estimated_purchases_30d: int = 0
+    sellers_analyzed: int = 0
+    reviews_scanned: int = 0
 
 
 class PriceHistogramBinDTO(BaseModel):
@@ -147,24 +158,36 @@ class TopSellerDTO(BaseModel):
 class SectionRowDTO(BaseModel):
     section_url: str
     section_id: int | None
+    section_name: str | None = None
     counter_total: int | None
     loaded_count: int
     coverage_status: str
 
 
+class TopDemandSellerDTO(BaseModel):
+    seller_id: int | None
+    seller_name: str
+    estimated_purchases_total: int
+    estimated_purchases_30d: int
+    reviews_scanned: int
+
+
 class TablesDTO(BaseModel):
     top_offers: list[TopOfferDTO]
     top_sellers: list[TopSellerDTO]
+    top_demand_sellers: list[TopDemandSellerDTO] = Field(default_factory=list)
     sections: list[SectionRowDTO]
 
 
 class AnalyzeMetaDTO(BaseModel):
     query: str
     currency: Currency
+    ui_locale: UiLocale = UiLocale.ru
     content_locale_requested: ContentLocale = ContentLocale.auto
     content_locale_applied: str = "en"
     category_game_id: int | None = None
     category_id: int | None = None
+    category_ids: list[int] = Field(default_factory=list)
     generated_at: datetime
     valid_until: datetime
     effective_options: EffectiveAnalyzeOptionsDTO
@@ -225,9 +248,11 @@ class HistoryItemDTO(BaseModel):
     request_id: str
     query: str
     currency: str
+    ui_locale: UiLocale = UiLocale.ru
     generated_at: datetime
     category_game_id: int | None = None
     category_id: int | None = None
+    category_ids: list[int] = Field(default_factory=list)
     matched_offers: int = 0
     unique_sellers: int = 0
     p50_price: float | None = None

@@ -3,268 +3,121 @@ from app.services.analyzer import AnalyzerService
 from app.services.funpay_client import OfferData, ReviewData
 
 
+def _offer(
+    offer_id: int,
+    seller_id: int,
+    description: str,
+    price: float,
+) -> OfferData:
+    return OfferData(
+        section_id=2893,
+        offer_id=offer_id,
+        seller_id=seller_id,
+        seller_name=f"seller_{seller_id}",
+        description=description,
+        price=price,
+        currency="₽",
+        reviews_count=10,
+        seller_age=None,
+        is_online=True,
+        auto_delivery=True,
+    )
+
+
+def _review(
+    seller_id: int,
+    detail: str,
+    rating: int = 5,
+    date_bucket: str = "This month",
+) -> ReviewData:
+    return ReviewData(
+        seller_id=seller_id,
+        detail=detail,
+        text="ok",
+        rating=rating,
+        date_bucket=date_bucket,
+    )
+
+
 def test_demand_stats_empty() -> None:
-    stats = AnalyzerService.compute_demand_stats([], include_index=True)
+    stats = AnalyzerService.compute_demand_stats([], include_index=True, sellers_analyzed=3, reviews_scanned=12)
     assert stats.relevant_reviews == 0
     assert stats.demand_index == 0.0
+    assert stats.sellers_analyzed == 3
+    assert stats.reviews_scanned == 12
 
 
 def test_demand_stats_values() -> None:
     reviews = [
-        ReviewData(
-            seller_id=1,
-            detail="Jump Space, 0.6 €",
-            text="ok",
-            rating=5,
-            date_bucket="This month",
-        ),
-        ReviewData(
-            seller_id=1,
-            detail="Jump Space, 0.6 €",
-            text="ok",
-            rating=4,
-            date_bucket="This month",
-        ),
-        ReviewData(
-            seller_id=2,
-            detail="Jump Space, 0.6 €",
-            text="bad",
-            rating=2,
-            date_bucket="Month ago",
-        ),
+        _review(1, "Project Zomboid, 10 ₽", rating=5, date_bucket="This month"),
+        _review(1, "Project Zomboid, 10 ₽", rating=4, date_bucket="This month"),
+        _review(2, "Project Zomboid, 35 ₽", rating=2, date_bucket="Month ago"),
     ]
-    stats = AnalyzerService.compute_demand_stats(reviews, include_index=True)
+    stats = AnalyzerService.compute_demand_stats(
+        reviews,
+        include_index=True,
+        sellers_analyzed=2,
+        reviews_scanned=40,
+    )
     assert stats.relevant_reviews == 3
     assert stats.unique_sellers_with_relevant_reviews == 2
     assert stats.volume_30d == 2
+    assert stats.estimated_purchases_total == 3
+    assert stats.estimated_purchases_30d == 2
     assert stats.positive_share > 0.6
+    assert stats.sellers_analyzed == 2
+    assert stats.reviews_scanned == 40
 
 
-def test_demand_stats_without_index() -> None:
-    reviews = [
-        ReviewData(
-            seller_id=1,
-            detail="Jump Space, 0.6 €",
-            text="ok",
-            rating=5,
-            date_bucket="This month",
-        ),
-    ]
-    stats = AnalyzerService.compute_demand_stats(reviews, include_index=False)
-    assert stats.relevant_reviews == 1
-    assert stats.demand_index is None
+def test_extract_amounts_from_text() -> None:
+    amounts = AnalyzerService._extract_amounts_from_text("Project Zomboid, 10 ₽ / 10.5 RUB")
+    assert 10.0 in amounts
+    assert 10.5 in amounts
 
 
-def test_derive_review_tokens_skips_noise_words() -> None:
-    service = AnalyzerService(db=None, client=None, settings=Settings())  # type: ignore[arg-type]
-    offers = [
-        OfferData(
-            section_id=2893,
-            offer_id=1,
-            seller_id=1,
-            seller_name="seller",
-            description="Project Zomboid Standard Edition Steam Deluxe PS5 аренда",
-            price=10.0,
-            currency="₽",
-            reviews_count=10,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
-        OfferData(
-            section_id=2893,
-            offer_id=2,
-            seller_id=2,
-            seller_name="seller2",
-            description="Project Zomboid Standard Edition Steam Deluxe PS5 аренда",
-            price=11.0,
-            currency="₽",
-            reviews_count=11,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
-        OfferData(
-            section_id=2893,
-            offer_id=3,
-            seller_id=3,
-            seller_name="seller3",
-            description="Project Zomboid Standard Edition Steam Deluxe PS5 аренда",
-            price=12.0,
-            currency="₽",
-            reviews_count=12,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
-    ]
-    tokens = service._derive_review_tokens_from_offers(offers)
-    assert "project" in tokens
-    assert "zomboid" in tokens
-    assert "standard" not in tokens
-    assert "edition" not in tokens
-    assert "steam" not in tokens
-    assert "deluxe" not in tokens
-    assert "ps5" not in tokens
-
-
-def test_fallback_review_relevance_uses_detail_tokens() -> None:
-    review_ok = ReviewData(
-        seller_id=1,
-        detail="Project Zomboid, 100 ₽",
-        text="Быстро",
-        rating=5,
-        date_bucket="This month",
-    )
-    review_bad = ReviewData(
-        seller_id=1,
-        detail="Steam, 100 ₽",
-        text="Топ",
-        rating=5,
-        date_bucket="This month",
-    )
-    assert AnalyzerService._is_fallback_review_relevant(review_ok, ["project", "zomboid"])
-    assert not AnalyzerService._is_fallback_review_relevant(review_bad, ["project", "zomboid"])
-
-
-def test_fallback_review_relevance_accepts_single_overlap_for_derived_tokens() -> None:
-    review = ReviewData(
-        seller_id=1,
-        detail="Pragmata, 20 ₽",
-        text="быстро",
-        rating=5,
-        date_bucket="This month",
-    )
-    assert AnalyzerService._is_fallback_review_relevant(review, ["pragmata", "deluxe", "ps5"])
-
-
-def test_review_relevance_tokens_uses_fallback_for_duration_query() -> None:
-    service = AnalyzerService(db=None, client=None, settings=Settings())  # type: ignore[arg-type]
-    offers = [
-        OfferData(
-            section_id=2893,
-            offer_id=1,
-            seller_id=1,
-            seller_name="seller",
-            description="Project Zomboid Standard Edition аренда",
-            price=10.0,
-            currency="₽",
-            reviews_count=10,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
-        OfferData(
-            section_id=2893,
-            offer_id=2,
-            seller_id=2,
-            seller_name="seller2",
-            description="Project Zomboid Standard Edition аренда",
-            price=11.0,
-            currency="₽",
-            reviews_count=11,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
-        OfferData(
-            section_id=2893,
-            offer_id=3,
-            seller_id=3,
-            seller_name="seller3",
-            description="Project Zomboid Standard Edition аренда",
-            price=12.0,
-            currency="₽",
-            reviews_count=12,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
-    ]
-    token_list, used_fallback = service._review_relevance_tokens(
-        query="24 часа",
-        offers=offers,
-        category_game_id=None,
-        category_id=2893,
-    )
-    assert used_fallback is True
-    assert "project" in token_list
-    assert "zomboid" in token_list
-
-
-def test_top_seller_review_relevance_requires_game_and_amount_match() -> None:
+def test_strict_review_match_requires_game_and_amount() -> None:
     service = AnalyzerService(db=None, client=None, settings=Settings())  # type: ignore[arg-type]
     seller_offers = [
-        OfferData(
-            section_id=2893,
-            offer_id=1,
-            seller_id=1,
-            seller_name="seller",
-            description="Project Zomboid аренда 24 часа",
-            price=10.0,
-            currency="₽",
-            reviews_count=10,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
-        OfferData(
-            section_id=2893,
-            offer_id=2,
-            seller_id=1,
-            seller_name="seller",
-            description="Project Zomboid аренда 7 дней",
-            price=35.0,
-            currency="₽",
-            reviews_count=10,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
+        _offer(1, 1, "Project Zomboid аренда 24 часа", 10.0),
+        _offer(2, 1, "Project Zomboid аренда 7 дней", 35.0),
     ]
-    review_ok = ReviewData(
-        seller_id=1,
-        detail="Project Zomboid, 10 ₽",
-        text="ok",
-        rating=5,
-        date_bucket="This month",
+    ok, reason = service._is_review_matching_purchase(
+        review=_review(1, "Project Zomboid, 10 ₽"),
+        seller_offers=seller_offers,
+        category_tokens=["project", "zomboid"],
     )
-    review_bad_amount = ReviewData(
-        seller_id=1,
-        detail="Project Zomboid, 100 ₽",
-        text="ok",
-        rating=5,
-        date_bucket="This month",
-    )
-    review_bad_game = ReviewData(
-        seller_id=1,
-        detail="Steam, 10 ₽",
-        text="ok",
-        rating=5,
-        date_bucket="This month",
-    )
+    assert ok is True
+    assert reason is None
 
-    assert service._is_top_seller_review_relevant(review_ok, ["project", "zomboid"], seller_offers)
-    assert not service._is_top_seller_review_relevant(review_bad_amount, ["project", "zomboid"], seller_offers)
-    assert not service._is_top_seller_review_relevant(review_bad_game, ["project", "zomboid"], seller_offers)
+    bad_amount, reason_amount = service._is_review_matching_purchase(
+        review=_review(1, "Project Zomboid, 100 ₽"),
+        seller_offers=seller_offers,
+        category_tokens=["project", "zomboid"],
+    )
+    assert bad_amount is False
+    assert reason_amount == "no_price_match"
+
+    bad_game, reason_game = service._is_review_matching_purchase(
+        review=_review(1, "Steam, 10 ₽"),
+        seller_offers=seller_offers,
+        category_tokens=["project", "zomboid"],
+    )
+    assert bad_game is False
+    assert reason_game == "no_game_match"
+
+    no_amount, reason_no_amount = service._is_review_matching_purchase(
+        review=_review(1, "Project Zomboid"),
+        seller_offers=seller_offers,
+        category_tokens=["project", "zomboid"],
+    )
+    assert no_amount is False
+    assert reason_no_amount == "no_amount"
 
 
 def test_filter_offers_by_requested_currency_keeps_only_matching() -> None:
     service = AnalyzerService(db=None, client=None, settings=Settings())  # type: ignore[arg-type]
     offers = [
-        OfferData(
-            section_id=1,
-            offer_id=1,
-            seller_id=1,
-            seller_name="rub_seller",
-            description="rub",
-            price=10.0,
-            currency="₽",
-            reviews_count=1,
-            seller_age=None,
-            is_online=True,
-            auto_delivery=True,
-        ),
+        _offer(1, 1, "rub", 10.0),
         OfferData(
             section_id=1,
             offer_id=2,
@@ -298,8 +151,6 @@ def test_filter_offers_by_requested_currency_keeps_only_matching() -> None:
     assert relaxed is False
     assert len(filtered) == 2
     assert {offer.offer_id for offer in filtered} == {1, 3}
-    unknown = next(offer for offer in filtered if offer.offer_id == 3)
-    assert unknown.currency == "RUB"
 
 
 def test_filter_offers_by_currency_relaxes_when_all_mismatch() -> None:

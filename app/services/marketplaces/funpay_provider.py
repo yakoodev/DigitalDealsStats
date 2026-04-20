@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.models import ReviewSnapshot
+from app.models import AnalysisHistory, ReviewSnapshot
 from app.schemas.analyze import AnalyzeRequestDTO, CategoryGameDTO, CategorySectionDTO
 from app.schemas.v2 import (
     CommonFiltersDTO,
@@ -25,6 +25,7 @@ from app.schemas.v2 import (
 from app.services.analyzer import AnalyzerService
 from app.services.funpay_client import FunPayClient
 from app.services.marketplaces.base import MarketplaceProvider
+from app.services.text_utils import normalize_text
 
 
 def _normalize_single_proxy(value: str) -> str:
@@ -88,9 +89,11 @@ class FunPayProvider(MarketplaceProvider):
             query=common_filters.query,
             force_refresh=common_filters.force_refresh,
             currency=common_filters.currency,
+            ui_locale=common_filters.ui_locale,
             content_locale=filters.get("content_locale", "auto"),
             category_game_id=filters.get("category_game_id"),
             category_id=filters.get("category_id"),
+            category_ids=filters.get("category_ids") or [],
             options=filters.get("options", {}),
             datacenter_proxies=filters.get("datacenter_proxies"),
             residential_proxies=filters.get("residential_proxies"),
@@ -131,6 +134,10 @@ class FunPayProvider(MarketplaceProvider):
             volume_30d=int(payload.get("volume_30d", 0)),
             demand_index=payload.get("demand_index"),
             unique_sellers_with_relevant_reviews=int(payload.get("unique_sellers_with_relevant_reviews", 0)),
+            estimated_purchases_total=int(payload.get("estimated_purchases_total", 0)),
+            estimated_purchases_30d=int(payload.get("estimated_purchases_30d", 0)),
+            sellers_analyzed=int(payload.get("sellers_analyzed", 0)),
+            reviews_scanned=int(payload.get("reviews_scanned", 0)),
         )
 
     def _build_reviews(self, provider_request_id: str, limit: int = 400) -> list[NormalizedReviewDTO]:
@@ -153,6 +160,42 @@ class FunPayProvider(MarketplaceProvider):
             for row in rows
         ]
 
+    def _resolve_cache_source_request_id(
+        self,
+        *,
+        query: str,
+        currency: str,
+        options_hash: str | None,
+        generated_at: datetime | None,
+    ) -> str | None:
+        if not options_hash:
+            return None
+        rows = self.db.scalars(
+            select(AnalysisHistory)
+            .where(
+                AnalysisHistory.query_normalized == normalize_text(query),
+                AnalysisHistory.currency == currency,
+                AnalysisHistory.options_hash == options_hash,
+            )
+            .order_by(desc(AnalysisHistory.generated_at))
+            .limit(30)
+        ).all()
+        if not rows:
+            return None
+        if generated_at is None:
+            return rows[0].request_id
+
+        # generated_at приходит из кэша и может отличаться форматированием по timezone;
+        # принимаем ближайшее совпадение в пределах одной секунды.
+        for row in rows:
+            try:
+                delta = abs((row.generated_at - generated_at).total_seconds())
+            except Exception:  # noqa: BLE001
+                continue
+            if delta <= 1.0:
+                return row.request_id
+        return rows[0].request_id
+
     def analyze(self, common_filters: CommonFiltersDTO, marketplace_filters: dict | None) -> MarketplaceRunResultDTO:
         filters = self._to_marketplace_filters(marketplace_filters)
         client = self._build_client(filters)
@@ -171,6 +214,33 @@ class FunPayProvider(MarketplaceProvider):
             limit=5000,
             offset=0,
         )
+        meta_generated_at_raw = meta_raw.get("generated_at")
+        meta_generated_at: datetime | None = None
+        if isinstance(meta_generated_at_raw, str):
+            try:
+                meta_generated_at = datetime.fromisoformat(meta_generated_at_raw.replace("Z", "+00:00"))
+            except ValueError:
+                meta_generated_at = None
+        options_hash = None
+        if isinstance(meta_raw.get("effective_options"), dict):
+            options_hash = meta_raw.get("effective_options", {}).get("options_hash")
+        source_request_id = legacy_envelope.request_id
+        if legacy_envelope.cache_hit and offers_slice.total == 0:
+            inferred_source_id = self._resolve_cache_source_request_id(
+                query=common_filters.query,
+                currency=common_filters.currency.value,
+                options_hash=str(options_hash) if options_hash else None,
+                generated_at=meta_generated_at,
+            )
+            if inferred_source_id:
+                fallback_slice = analyzer.list_request_offers(
+                    request_id=inferred_source_id,
+                    limit=5000,
+                    offset=0,
+                )
+                if fallback_slice.total > 0:
+                    offers_slice = fallback_slice
+                    source_request_id = inferred_source_id
         core_offers = [
             NormalizedOfferDTO(
                 marketplace=MarketplaceSlug.funpay,
@@ -207,7 +277,7 @@ class FunPayProvider(MarketplaceProvider):
                     )
                 )
 
-        core_reviews = self._build_reviews(legacy_envelope.request_id)
+        core_reviews = self._build_reviews(source_request_id)
         summary = MarketplaceSummaryDTO(
             marketplace=MarketplaceSlug.funpay,
             label=self.label,
@@ -220,8 +290,12 @@ class FunPayProvider(MarketplaceProvider):
             if isinstance(meta_raw.get("valid_until"), str)
             else datetime.now(UTC),
             cache_hit=legacy_envelope.cache_hit,
+            ui_locale=meta_raw.get("ui_locale", "ru"),
             content_locale_requested=meta_raw.get("content_locale_requested"),
             content_locale_applied=meta_raw.get("content_locale_applied"),
+            category_game_id=meta_raw.get("category_game_id"),
+            category_id=meta_raw.get("category_id"),
+            category_ids=meta_raw.get("category_ids") or [],
             offers_stats=self._map_offers_stats(result_raw.get("offers_stats")),
             coverage=self._map_coverage(result_raw.get("coverage")),
             demand=self._map_demand(result_raw.get("demand")),
@@ -236,6 +310,7 @@ class FunPayProvider(MarketplaceProvider):
             ),
             raw={
                 "provider_request_id": legacy_envelope.request_id,
+                "source_request_id": source_request_id,
                 "legacy_result": result_raw,
             },
         )
