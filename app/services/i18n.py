@@ -7,8 +7,9 @@ SUPPORTED_UI_LOCALES = {"ru", "en"}
 MESSAGES: dict[str, dict[str, str]] = {
     "ru": {
         "validation.empty_query_requires_scope": (
-            "Для пустого запроса по FunPay выберите category_game_id, category_id "
-            "или непустой category_ids в marketplace_filters.funpay."
+            "Для пустого запроса укажите область сканирования: "
+            "для FunPay выберите category_game_id/category_id/category_ids, "
+            "для PlayerOK — category_game_slug/category_slugs."
         ),
         "progress.global.validate": "Проверяю доступность выбранных площадок.",
         "progress.global.start": "Запускаю анализ площадок: {marketplaces}.",
@@ -77,11 +78,25 @@ MESSAGES: dict[str, dict[str, str]] = {
         "warning.reviews.no_amount": "Во многих отзывах нет суммы оплаты, поэтому они не засчитаны.",
         "warning.reviews.no_game": "Часть отзывов не совпала по игре/разделу с текущей выборкой.",
         "warning.reviews.no_price": "Часть отзывов не совпала по сумме с ценами офферов продавцов.",
+        "warning.playerok.safe_endpoints": "Найдены безопасные внутренние endpoint'ы: {endpoints}",
+        "warning.playerok.graphql_section_failed": (
+            "Не удалось получить офферы по GraphQL для раздела '{section}'."
+        ),
+        "warning.playerok.graphql_top_items_failed": (
+            "Не удалось получить глобальную выдачу PlayerOK по GraphQL."
+        ),
+        "warning.playerok.html_degrade_used": (
+            "Для {count} разделов применен HTML degrade из-за ошибки GraphQL."
+        ),
+        "warning.playerok.graphql_failed_count": (
+            "GraphQL дал ошибки в {count} местах; проверьте прокси/заголовки."
+        ),
     },
     "en": {
         "validation.empty_query_requires_scope": (
-            "For empty FunPay queries provide category_game_id, category_id "
-            "or non-empty category_ids in marketplace_filters.funpay."
+            "For an empty query you must provide scan scope: "
+            "FunPay requires category_game_id/category_id/category_ids, "
+            "PlayerOK requires category_game_slug/category_slugs."
         ),
         "progress.global.validate": "Checking selected marketplace availability.",
         "progress.global.start": "Starting marketplace analysis: {marketplaces}.",
@@ -147,6 +162,19 @@ MESSAGES: dict[str, dict[str, str]] = {
         "warning.reviews.no_amount": "Many reviews have no payment amount and were excluded.",
         "warning.reviews.no_game": "Some reviews do not match the game/category in current offer scope.",
         "warning.reviews.no_price": "Some reviews do not match seller offer prices.",
+        "warning.playerok.safe_endpoints": "Discovered safe internal endpoints: {endpoints}",
+        "warning.playerok.graphql_section_failed": (
+            "Failed to fetch offers via GraphQL for section '{section}'."
+        ),
+        "warning.playerok.graphql_top_items_failed": (
+            "Failed to fetch global PlayerOK feed via GraphQL."
+        ),
+        "warning.playerok.html_degrade_used": (
+            "HTML degrade was used for {count} sections because GraphQL failed."
+        ),
+        "warning.playerok.graphql_failed_count": (
+            "GraphQL failed in {count} places; check proxies/headers."
+        ),
     },
 }
 

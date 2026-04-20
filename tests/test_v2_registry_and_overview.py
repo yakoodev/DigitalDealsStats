@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app.schemas.v2 import (
+    AnalyzeV2RequestDTO,
     CoverageV2DTO,
     DemandStatsV2DTO,
     MarketplaceCoreDTO,
@@ -18,7 +19,7 @@ def test_registry_contains_disabled_marketplaces() -> None:
     items = MarketplaceRegistry.catalog_dto()
     slugs = {item.slug.value: item for item in items}
     assert "funpay" in slugs and slugs["funpay"].enabled is True
-    assert "playerok" in slugs and slugs["playerok"].enabled is False
+    assert "playerok" in slugs and slugs["playerok"].enabled is True
     assert "ggsell" in slugs and slugs["ggsell"].enabled is False
     assert "platimarket" in slugs and slugs["platimarket"].enabled is False
 
@@ -59,10 +60,10 @@ def _mk_result(prices: list[float], matched: int, sellers: int, p50: float | Non
             offers=[
                 NormalizedOfferDTO(
                     marketplace=MarketplaceSlug.funpay,
-                    offer_id=idx + 1,
+                    offer_id=str(idx + 1),
                     offer_url=f"https://funpay.com/lots/offer?id={idx + 1}",
-                    section_id=1,
-                    seller_id=100 + idx,
+                    section_id="1",
+                    seller_id=str(100 + idx),
                     seller_name=f"seller_{idx}",
                     description="offer",
                     price=price,
@@ -95,8 +96,6 @@ def test_compute_overview_builds_pooled_and_aggregates() -> None:
 
 
 def test_is_heavy_request_for_deep_funpay_profile() -> None:
-    from app.schemas.v2 import AnalyzeV2RequestDTO
-
     payload = AnalyzeV2RequestDTO.model_validate(
         {
             "marketplaces": ["funpay"],
@@ -119,3 +118,26 @@ def test_is_heavy_request_for_deep_funpay_profile() -> None:
     payload.marketplace_filters.funpay.options.include_reviews = False
     payload.marketplace_filters.funpay.options.include_demand_index = False
     assert GlobalAnalyzerService.is_heavy_request(payload) is False
+
+
+def test_is_heavy_request_for_playerok_reviews() -> None:
+    payload = AnalyzeV2RequestDTO.model_validate(
+        {
+            "marketplaces": ["playerok"],
+            "common_filters": {
+                "query": "robux",
+                "currency": "RUB",
+                "execution": "auto",
+            },
+            "marketplace_filters": {
+                "playerok": {
+                    "category_game_slug": "roblox",
+                    "options": {
+                        "profile": "safe",
+                        "include_reviews": True,
+                    },
+                }
+            },
+        }
+    )
+    assert GlobalAnalyzerService.is_heavy_request(payload) is True

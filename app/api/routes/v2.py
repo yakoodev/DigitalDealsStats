@@ -17,10 +17,12 @@ from app.schemas.v2 import (
     MarketplaceRunResultDTO,
     MarketplacesCatalogResponseDTO,
     OverviewV2DTO,
+    PlayerOkCategoriesResponseDTO,
     V2ExecutionMode,
 )
 from app.services.global_analyzer import GlobalAnalyzerService
 from app.services.i18n import tr
+from app.services.text_utils import repair_mojibake_cyrillic
 
 router = APIRouter(prefix="/v2", tags=["v2"])
 
@@ -53,17 +55,30 @@ def analyze_v2(
     db: Session = Depends(get_db),
 ) -> AnalyzeV2EnvelopeDTO:
     settings = get_settings()
-    payload.common_filters.query = payload.common_filters.query.strip()
+    payload.common_filters.query = repair_mojibake_cyrillic(payload.common_filters.query).strip()
     ui_locale = payload.common_filters.ui_locale.value
     if payload.common_filters.query == "":
-        needs_category = any(item.value == "funpay" for item in payload.marketplaces)
+        needs_funpay_scope = any(item.value == "funpay" for item in payload.marketplaces)
+        needs_playerok_scope = any(item.value == "playerok" for item in payload.marketplaces)
         funpay_filters = payload.marketplace_filters.funpay
-        if needs_category and (
+        playerok_filters = payload.marketplace_filters.playerok
+        if needs_funpay_scope and (
             funpay_filters is None
             or (
                 funpay_filters.category_game_id is None
                 and funpay_filters.category_id is None
                 and len(funpay_filters.category_ids) == 0
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=tr(ui_locale, "validation.empty_query_requires_scope"),
+            )
+        if needs_playerok_scope and (
+            playerok_filters is None
+            or (
+                not playerok_filters.category_game_slug
+                and len(playerok_filters.category_slugs) == 0
             )
         ):
             raise HTTPException(
@@ -209,3 +224,19 @@ def funpay_categories_v2(db: Session = Depends(get_db)) -> CategoriesResponseDTO
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий FunPay: {exc}") from exc
+
+
+@router.get("/marketplaces/playerok/categories", response_model=PlayerOkCategoriesResponseDTO)
+def playerok_categories_v2(
+    game_slug: str | None = Query(default=None, min_length=1),
+    db: Session = Depends(get_db),
+) -> PlayerOkCategoriesResponseDTO:
+    service = _make_service(db)
+    try:
+        games = service.playerok_categories(game_slug=game_slug)
+        return PlayerOkCategoriesResponseDTO(
+            generated_at=datetime.now(UTC),
+            games=games,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий PlayerOK: {exc}") from exc

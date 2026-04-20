@@ -195,6 +195,28 @@
       font-weight: 800;
     }
     .actions.compact { margin-top: 6px; }
+    .subtabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 10px;
+    }
+    .subtab-btn {
+      width: auto;
+      min-width: 130px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #223b61;
+      cursor: pointer;
+      font-weight: 700;
+      padding: 7px 12px;
+      border-radius: 10px;
+    }
+    .subtab-btn.active {
+      border-color: #065fc6;
+      color: #fff;
+      background: linear-gradient(135deg, #0f7cff 0%, #065fc6 100%);
+    }
     .link-btn {
       text-decoration: none;
       display: inline-flex;
@@ -469,6 +491,7 @@
         <nav class="nav">
           <a id="navOverview" href="/">Общий анализ</a>
           <a id="navFunPay" href="/analysis/funpay">FunPay</a>
+          <a id="navPlayerOk" href="/analysis/playerok">PlayerOK</a>
         </nav>
       </div>
     </div>
@@ -518,6 +541,9 @@
                 <div class="name">Режим запуска</div>
                 <div class="value" style="font-size:15px;">Только FunPay (страница площадки)</div>
               </div>
+            </div>
+            <div id="commonOptionsBlock" class="full checks">
+              <label class="check"><input id="forceRefresh" type="checkbox" />Игнорировать кэш (force_refresh)</label>
             </div>
           </div>
 
@@ -588,28 +614,121 @@
               <input id="fpHistoryPoints" type="number" min="5" max="365" value="60" />
             </div>
             <div class="full checks">
-              <label class="check"><input id="forceRefresh" type="checkbox" />Игнорировать кэш (force_refresh)</label>
               <label class="check"><input id="fpIncludeReviews" type="checkbox" />Анализировать отзывы</label>
               <label class="check"><input id="fpIncludeDemand" type="checkbox" />Считать Demand Index</label>
               <label class="check"><input id="fpIncludeFallback" type="checkbox" checked />Резервный обход разделов</label>
             </div>
           </div>
+          </div>
 
-          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">Прокси FunPay</div>
-          <div class="grid">
+          <div id="playerokFiltersContainer" class="hidden">
+          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">PlayerOK фильтры</div>
+          <div class="subtabs">
+            <button id="pkTabMainBtn" type="button" class="subtab-btn active">Фильтры</button>
+            <button id="pkTabSettingsBtn" type="button" class="subtab-btn">Настройки</button>
+          </div>
+          <div id="pkMainTab" class="grid">
             <div>
-              <label for="fpDcProxy">Datacenter</label>
-              <textarea id="fpDcProxy" placeholder="45.88.208.237:1508@user:pass"></textarea>
+              <label for="pkProfile">Профиль</label>
+              <select id="pkProfile">
+                <option value="safe">safe</option>
+                <option value="balanced" selected>balanced</option>
+                <option value="deep">deep</option>
+              </select>
             </div>
             <div>
-              <label for="fpResProxy">Residential</label>
-              <textarea id="fpResProxy" placeholder="http://user:pass@ip:port"></textarea>
+              <label for="pkUseGameScope">Область игры</label>
+              <select id="pkUseGameScope">
+                <option value="true" selected>Включать разделы выбранной игры</option>
+                <option value="false">Только отмеченные разделы</option>
+              </select>
             </div>
             <div class="full">
-              <label for="fpMobProxy">Mobile</label>
-              <textarea id="fpMobProxy" placeholder="http://user:pass@ip:port"></textarea>
+              <label for="pkGame">Категория (игра)</label>
+              <select id="pkGame">
+                <option value="">Любая игра</option>
+              </select>
+            </div>
+            <div class="full">
+              <label for="pkGameCustom">Игра (slug, ручной ввод)</label>
+              <input id="pkGameCustom" type="text" placeholder="например: steam" />
+              <div class="hint">Если каталог игры пустой, укажите slug вручную.</div>
+            </div>
+            <div class="full">
+              <label for="pkSectionSearch">Разделы PlayerOK (чекбоксы)</label>
+              <input id="pkSectionSearch" type="text" placeholder="Фильтр разделов по названию" />
+              <div class="actions compact" style="margin-top:6px;">
+                <button id="pkSectionSelectVisible" type="button" class="btn-secondary">Отметить видимые</button>
+                <button id="pkSectionClearVisible" type="button" class="btn-secondary">Снять видимые</button>
+                <span id="pkSectionSelectedCount" class="chip-inline">Выбрано: 0</span>
+              </div>
+              <div id="pkSectionChecklist" class="section-checklist"></div>
+            </div>
+            <div class="full">
+              <label for="pkSectionsCustom">Разделы (slug, ручной ввод)</label>
+              <textarea id="pkSectionsCustom" placeholder="по одному slug на строку&#10;например:&#10;steam/accounts&#10;steam/rent"></textarea>
+            </div>
+            <div>
+              <label for="pkSectionLimit">Лимит разделов сканирования</label>
+              <input id="pkSectionLimit" type="number" min="1" max="500" placeholder="по профилю" />
+            </div>
+            <div>
+              <label for="pkSellerLimit">Топ-продавцов для анализа отзывов</label>
+              <input id="pkSellerLimit" type="number" min="1" max="20" value="3" />
+            </div>
+            <div>
+              <label for="pkReviewPages">Страниц отзывов на продавца</label>
+              <input id="pkReviewPages" type="number" min="1" max="20" value="3" />
+            </div>
+            <div>
+              <label for="pkHistoryPoints">Точек в истории</label>
+              <input id="pkHistoryPoints" type="number" min="5" max="365" value="60" />
+            </div>
+            <div class="full">
+              <div class="checks">
+                <label class="check"><input id="pkIncludeReviews" type="checkbox" />Анализировать отзывы</label>
+                <label class="check"><input id="pkIncludeDemand" type="checkbox" />Считать Demand Index</label>
+                <label class="check"><input id="pkIncludeFallback" type="checkbox" checked />Резервный обход разделов</label>
+              </div>
             </div>
           </div>
+          <div id="pkSettingsTab" class="grid hidden" style="margin-top:8px;">
+            <div class="full checks">
+              <label class="check">
+                <input id="pkUseHtmlDegrade" type="checkbox" checked />
+                Разрешить HTML degrade при ошибках GraphQL
+              </label>
+              <label class="check">
+                <input id="pkAdvancedMode" type="checkbox" />
+                Расширенный режим (manual headers/cookies override)
+              </label>
+            </div>
+            <div class="full">
+              <label for="pkAdvancedHeaders">Доп. заголовки (JSON или `Header: Value` по строкам)</label>
+              <textarea id="pkAdvancedHeaders" placeholder='{"x-custom-header":"value"}' disabled></textarea>
+            </div>
+            <div class="full">
+              <label for="pkAdvancedCookies">Cookie override (JSON или `name=value` по строкам)</label>
+              <textarea id="pkAdvancedCookies" placeholder='{"session":"..."}' disabled></textarea>
+              <div class="hint">В истории запуска чувствительные значения маскируются.</div>
+            </div>
+          </div>
+          </div>
+
+          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">Прокси (общий пул)</div>
+          <div class="grid">
+            <div>
+              <label for="commonDcProxy">Datacenter</label>
+              <textarea id="commonDcProxy" placeholder="45.88.208.237:1508@user:pass"></textarea>
+            </div>
+            <div>
+              <label for="commonResProxy">Residential</label>
+              <textarea id="commonResProxy" placeholder="http://user:pass@ip:port"></textarea>
+            </div>
+            <div class="full">
+              <label for="commonMobProxy">Mobile</label>
+              <textarea id="commonMobProxy" placeholder="http://user:pass@ip:port"></textarea>
+            </div>
           </div>
 
           <div class="actions">
@@ -622,7 +741,7 @@
             <div class="actions compact">
               <button id="copyRunIdBtn" class="btn-secondary">Копировать run_id</button>
               <a id="openRunOverviewLink" class="link-btn disabled" href="#">Открыть overview</a>
-              <a id="openRunMarketplaceLink" class="link-btn disabled" href="#">Открыть FunPay</a>
+              <a id="openRunMarketplaceLink" class="link-btn disabled" href="#">Открыть площадку</a>
             </div>
           </div>
         </div>
@@ -865,18 +984,21 @@
     let selectedRunId = null;
     let marketplacesCatalog = [];
     let categoriesCatalog = [];
+    let playerokCategoriesCatalog = [];
     let currentMarketplaceResult = null;
     let fullOffers = [];
     let filteredOffers = [];
     let marketAnalyticsOffers = [];
     let sellerFocusPoint = null;
     let selectedSectionIds = new Set();
+    let selectedPlayerOkSectionSlugs = new Set();
     let offersPage = 0;
 
     const routePath = window.location.pathname;
     const isMarketplaceRoute = routePath.startsWith("/analysis/");
     const activeMarketplace = isMarketplaceRoute ? routePath.split("/")[2] : null;
     const isFunPayRoute = isMarketplaceRoute && activeMarketplace === "funpay";
+    const isPlayerOkRoute = isMarketplaceRoute && activeMarketplace === "playerok";
 
     const chartState = {
       price: { bins: [], bars: [], hoverIndex: -1, canvas: $("marketPriceCanvas") },
@@ -962,6 +1084,16 @@
       return null;
     }
 
+    function sellerProfileUrl(marketplace, sellerId, sellerUrl = null) {
+      if (sellerUrl) return safeUrl(sellerUrl);
+      const sid = String(sellerId || "").trim();
+      if (!sid) return null;
+      if (marketplace === "playerok") {
+        return safeUrl(`https://playerok.com/profile/${encodeURIComponent(sid)}/products`);
+      }
+      return safeUrl(`https://funpay.com/users/${encodeURIComponent(sid)}/`);
+    }
+
     function escapeHtml(value) {
       return String(value ?? "")
         .replaceAll("&", "&amp;")
@@ -1002,6 +1134,32 @@
       return `${(number * 100).toFixed(1)}%`;
     }
 
+    function repairCyrillicMojibake(value) {
+      const input = String(value ?? "");
+      if (!input) return input;
+      if (!/[ÐÑРС]/.test(input)) return input;
+      try {
+        const bytes = Uint8Array.from(Array.from(input, (ch) => ch.charCodeAt(0) & 0xff));
+        const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+        if (/[А-Яа-яЁё]/.test(decoded)) return decoded;
+      } catch (_) {
+        return input;
+      }
+      return input;
+    }
+
+    function formatHistoryQuery(value) {
+      const repaired = repairCyrillicMojibake(value);
+      const trimmed = String(repaired || "").trim();
+      if (!trimmed) return t("emptyQueryLabel");
+      const questionMarks = (trimmed.match(/\?/g) || []).length;
+      if (questionMarks >= 3 && !/[А-Яа-яЁё]/.test(trimmed)) {
+        const prefix = currentUiLocale === "en" ? "[Encoding error]" : "[Ошибка кодировки]";
+        return `${prefix} ${trimmed}`;
+      }
+      return repaired;
+    }
+
     function readInt(id) {
       const raw = $(id).value.trim();
       if (!raw) return null;
@@ -1040,11 +1198,86 @@
       node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
     }
 
+    function syncPlayerOkSectionSelectionFromDom() {
+      const checklist = $("pkSectionChecklist");
+      if (!checklist) return;
+      const boxes = Array.from(checklist.querySelectorAll("input[type='checkbox'][data-section-slug]"));
+      for (const box of boxes) {
+        const slug = String(box.getAttribute("data-section-slug") || "").trim();
+        if (!slug) continue;
+        if (box.checked) selectedPlayerOkSectionSlugs.add(slug);
+        else selectedPlayerOkSectionSlugs.delete(slug);
+      }
+    }
+
+    function readSelectedPlayerOkSectionSlugs() {
+      syncPlayerOkSectionSelectionFromDom();
+      return [...selectedPlayerOkSectionSlugs].sort((left, right) => left.localeCompare(right));
+    }
+
+    function updatePlayerOkSectionSelectedCount() {
+      const node = $("pkSectionSelectedCount");
+      if (!node) return;
+      const count = selectedPlayerOkSectionSlugs.size;
+      node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
+    }
+
     function parseLines(id) {
       return $(id).value
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
+    }
+
+    function parseLooseObject(id, separator = ":") {
+      const raw = String($(id).value || "").trim();
+      if (!raw) return {};
+      if (raw.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const cleaned = {};
+            for (const [key, value] of Object.entries(parsed)) {
+              const k = String(key || "").trim();
+              const v = String(value ?? "").trim();
+              if (k && v) cleaned[k] = v;
+            }
+            return cleaned;
+          }
+        } catch (_) {
+          return {};
+        }
+        return {};
+      }
+      const result = {};
+      for (const line of raw.split(/\r?\n/)) {
+        const value = String(line || "").trim();
+        if (!value) continue;
+        const idx = value.indexOf(separator);
+        if (idx <= 0) continue;
+        const key = value.slice(0, idx).trim();
+        const val = value.slice(idx + 1).trim();
+        if (key && val) result[key] = val;
+      }
+      return result;
+    }
+
+    function setPlayerOkTab(tab) {
+      const isSettings = tab === "settings";
+      $("pkMainTab").classList.toggle("hidden", isSettings);
+      $("pkSettingsTab").classList.toggle("hidden", !isSettings);
+      $("pkTabMainBtn").classList.toggle("active", !isSettings);
+      $("pkTabSettingsBtn").classList.toggle("active", isSettings);
+    }
+
+    function syncPlayerOkAdvancedState() {
+      const enabled = Boolean($("pkAdvancedMode").checked);
+      $("pkAdvancedHeaders").disabled = !enabled;
+      $("pkAdvancedCookies").disabled = !enabled;
+      if (!enabled) {
+        $("pkAdvancedHeaders").value = "";
+        $("pkAdvancedCookies").value = "";
+      }
     }
 
     function applyUiLocale() {
@@ -1060,14 +1293,25 @@
       }
       const labels = [
         ["label[for='fpSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
+        ["label[for='pkSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
         ["label[for='uiLocale']", currentUiLocale === "en" ? "UI locale" : "Язык интерфейса"],
         ["label[for='fpSectionSearch']", currentUiLocale === "en" ? "Category sections (checkboxes)" : "Разделы категории (чекбоксы)"],
+        ["label[for='pkSectionSearch']", currentUiLocale === "en" ? "PlayerOK sections (checkboxes)" : "Разделы PlayerOK (чекбоксы)"],
+        ["label[for='pkGameCustom']", currentUiLocale === "en" ? "Game slug (manual input)" : "Игра (slug, ручной ввод)"],
+        ["label[for='pkSectionsCustom']", currentUiLocale === "en" ? "Section slugs (manual input)" : "Разделы (slug, ручной ввод)"],
+        ["label[for='pkAdvancedHeaders']", currentUiLocale === "en" ? "Extra headers (JSON or `Header: Value` lines)" : "Доп. заголовки (JSON или `Header: Value` по строкам)"],
+        ["label[for='pkAdvancedCookies']", currentUiLocale === "en" ? "Cookie override (JSON or `name=value` lines)" : "Cookie override (JSON или `name=value` по строкам)"],
       ];
       for (const [selector, text] of labels) {
         const node = document.querySelector(selector);
         if (node) node.textContent = text;
       }
+      const pkMainBtn = $("pkTabMainBtn");
+      const pkSettingsBtn = $("pkTabSettingsBtn");
+      if (pkMainBtn) pkMainBtn.textContent = currentUiLocale === "en" ? "Filters" : "Фильтры";
+      if (pkSettingsBtn) pkSettingsBtn.textContent = currentUiLocale === "en" ? "Settings" : "Настройки";
       updateSectionSelectedCount();
+      updatePlayerOkSectionSelectedCount();
       if (!selectedRunId) {
         lastUpdateChip.textContent = t("statusWaiting");
         statusBanner.textContent = t("statusWaiting");
@@ -1095,12 +1339,15 @@
       const runPart = selectedRunId ? `?run_id=${encodeURIComponent(selectedRunId)}` : "";
       $("navOverview").href = `/${runPart}`;
       $("navFunPay").href = `/analysis/funpay${runPart}`;
+      $("navPlayerOk").href = `/analysis/playerok${runPart}`;
       $("navOverview").classList.toggle("active", !isMarketplaceRoute);
       $("navFunPay").classList.toggle("active", activeMarketplace === "funpay");
+      $("navPlayerOk").classList.toggle("active", activeMarketplace === "playerok");
 
       const runId = runIdInput.value.trim() || selectedRunId || "";
       const overviewLink = $("openRunOverviewLink");
       const funpayLink = $("openRunMarketplaceLink");
+      const targetMarketplace = activeMarketplace || "funpay";
       if (!runId) {
         overviewLink.href = "#";
         overviewLink.classList.add("disabled");
@@ -1109,7 +1356,7 @@
       } else {
         overviewLink.href = `/?run_id=${encodeURIComponent(runId)}`;
         overviewLink.classList.remove("disabled");
-        funpayLink.href = `/analysis/funpay?run_id=${encodeURIComponent(runId)}`;
+        funpayLink.href = `/analysis/${encodeURIComponent(targetMarketplace)}?run_id=${encodeURIComponent(runId)}`;
         funpayLink.classList.remove("disabled");
       }
     }
@@ -1164,9 +1411,14 @@
       const fpPresetBlock = $("fpQuickPresetBlock");
       const runBtn = $("runBtn");
       const funpayFilters = $("funpayFiltersContainer");
+      const playerokFilters = $("playerokFiltersContainer");
+      const commonOptions = $("commonOptionsBlock");
+      const singleHintValue = singleHint.querySelector(".value");
 
       runBtn.disabled = false;
       funpayFilters.classList.remove("hidden");
+      playerokFilters.classList.add("hidden");
+      commonOptions.classList.remove("hidden");
 
       if (isFunPayRoute) {
         formHead.textContent = "Запуск анализа FunPay";
@@ -1175,12 +1427,29 @@
         formModeNotice.classList.remove("hidden");
         marketBlock.classList.add("hidden");
         singleHint.classList.remove("hidden");
+        if (singleHintValue) singleHintValue.textContent = "Только FunPay (страница площадки)";
         fpPresetBlock.classList.remove("hidden");
+        playerokFilters.classList.add("hidden");
         runBtn.textContent = "Запустить анализ FunPay";
         return;
       }
 
-      if (isMarketplaceRoute && activeMarketplace !== "funpay") {
+      if (isPlayerOkRoute) {
+        formHead.textContent = "Запуск анализа PlayerOK";
+        formModeNotice.className = "status ok";
+        formModeNotice.textContent = "Режим страницы площадки: запускается только PlayerOK, без выбора других площадок.";
+        formModeNotice.classList.remove("hidden");
+        marketBlock.classList.add("hidden");
+        singleHint.classList.remove("hidden");
+        if (singleHintValue) singleHintValue.textContent = "Только PlayerOK (страница площадки)";
+        fpPresetBlock.classList.add("hidden");
+        funpayFilters.classList.add("hidden");
+        playerokFilters.classList.remove("hidden");
+        runBtn.textContent = "Запустить анализ PlayerOK";
+        return;
+      }
+
+      if (isMarketplaceRoute && !isFunPayRoute && !isPlayerOkRoute) {
         formHead.textContent = "Запуск анализа площадки";
         formModeNotice.className = "status err";
         formModeNotice.textContent = `Площадка "${activeMarketplace}" пока не реализована. Запуск недоступен.`;
@@ -1189,6 +1458,8 @@
         singleHint.classList.add("hidden");
         fpPresetBlock.classList.add("hidden");
         funpayFilters.classList.add("hidden");
+        playerokFilters.classList.add("hidden");
+        commonOptions.classList.add("hidden");
         runBtn.textContent = "Запуск недоступен";
         runBtn.disabled = true;
         return;
@@ -1202,6 +1473,7 @@
       singleHint.classList.add("hidden");
       fpPresetBlock.classList.add("hidden");
       runBtn.textContent = "Запустить общий анализ";
+      syncOverviewMarketplaceFilterBlocks();
     }
 
     function renderProgress(envelope) {
@@ -1826,7 +2098,7 @@
       };
     }
 
-    function renderMarketAnalytics(offersForAnalytics, sections) {
+    function renderMarketAnalytics(offersForAnalytics, sections, marketplace = "funpay") {
       marketAnalyticsOffers = Array.isArray(offersForAnalytics) ? offersForAnalytics : [];
       const prices = (offersForAnalytics || []).map((item) => Number(item.price)).filter((v) => Number.isFinite(v));
       drawPriceHistogram(histogramBins(prices), -1);
@@ -1856,7 +2128,7 @@
             label: "Продавец",
             isHtml: true,
             render: (r) => {
-              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const href = sellerProfileUrl(marketplace, r.seller_id, r.seller_url);
               const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
               return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
             },
@@ -1942,7 +2214,7 @@
             label: "Продавец",
             isHtml: true,
             render: (r) => {
-              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const href = sellerProfileUrl(summary.marketplace, r.seller_id, r.seller_url);
               const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
               return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
             },
@@ -1969,7 +2241,7 @@
             label: "Продавец",
             isHtml: true,
             render: (r) => {
-              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const href = sellerProfileUrl(summary.marketplace, r.seller_id, r.seller_url);
               const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
               return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
             },
@@ -1986,7 +2258,7 @@
             label: "Продавец",
             isHtml: true,
             render: (r) => {
-              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const href = sellerProfileUrl(summary.marketplace, r.seller_id, r.seller_url);
               const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
               return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
             },
@@ -2018,7 +2290,7 @@
 
       const historyPoints = raw?.charts?.history_points || [];
       drawHistory(historyPoints, -1);
-      renderMarketAnalytics(fullOffers, sections);
+      renderMarketAnalytics(fullOffers, sections, summary.marketplace || activeMarketplace || "funpay");
     }
 
     function renderOffersTable() {
@@ -2092,7 +2364,8 @@
             label: "Продавец",
             isHtml: true,
             render: (r) => {
-              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const marketplace = currentMarketplaceResult?.summary?.marketplace || activeMarketplace || "funpay";
+              const href = sellerProfileUrl(marketplace, r.seller_id, r.seller_url);
               const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
               return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
             },
@@ -2161,6 +2434,9 @@
       if (isFunPayRoute) {
         return ["funpay"];
       }
+      if (isPlayerOkRoute) {
+        return ["playerok"];
+      }
       const checked = Array.from(document.querySelectorAll("input[name='marketplace']:checked"))
         .map((item) => item.value);
       return checked;
@@ -2177,6 +2453,9 @@
           ui_locale: uiLocale,
           force_refresh: $("forceRefresh").checked,
           execution: $("execution").value,
+          datacenter_proxies: parseLines("commonDcProxy"),
+          residential_proxies: parseLines("commonResProxy"),
+          mobile_proxies: parseLines("commonMobProxy"),
         },
         marketplace_filters: {},
       };
@@ -2202,10 +2481,41 @@
             review_pages_per_seller: readInt("fpReviewPages"),
             history_points_limit: readInt("fpHistoryPoints"),
           },
-          datacenter_proxies: parseLines("fpDcProxy"),
-          residential_proxies: parseLines("fpResProxy"),
-          mobile_proxies: parseLines("fpMobProxy"),
         };
+      }
+      if (marketplaces.includes("playerok")) {
+        const selectedSections = readSelectedPlayerOkSectionSlugs();
+        const manualSections = parseLines("pkSectionsCustom")
+          .map((item) => String(item || "").trim().replace(/^\/+|\/+$/g, ""))
+          .filter((item) => item.length > 0);
+        const selectedSectionsSet = new Set([...selectedSections, ...manualSections]);
+        const manualGameSlug = String($("pkGameCustom").value || "").trim().replace(/^\/+|\/+$/g, "");
+        const selectedGameSlug = manualGameSlug || String($("pkGame").value || "").trim() || null;
+        const advancedMode = Boolean($("pkAdvancedMode").checked);
+        const advancedHeaders = advancedMode ? parseLooseObject("pkAdvancedHeaders", ":") : {};
+        const advancedCookies = advancedMode ? parseLooseObject("pkAdvancedCookies", "=") : {};
+        payload.marketplace_filters.playerok = {
+          category_game_slug: selectedGameSlug,
+          category_slugs: [...selectedSectionsSet].sort((left, right) => left.localeCompare(right)),
+          use_game_scope: $("pkUseGameScope").value !== "false",
+          use_html_degrade: $("pkUseHtmlDegrade").checked,
+          options: {
+            profile: $("pkProfile").value,
+            include_reviews: $("pkIncludeReviews").checked,
+            include_demand_index: $("pkIncludeDemand").checked,
+            include_fallback_scan: $("pkIncludeFallback").checked,
+            section_limit: readInt("pkSectionLimit"),
+            seller_limit: readInt("pkSellerLimit"),
+            review_pages_per_seller: readInt("pkReviewPages"),
+            history_points_limit: readInt("pkHistoryPoints"),
+          },
+        };
+        if (Object.keys(advancedHeaders).length > 0) {
+          payload.marketplace_filters.playerok.advanced_headers = advancedHeaders;
+        }
+        if (Object.keys(advancedCookies).length > 0) {
+          payload.marketplace_filters.playerok.advanced_cookies = advancedCookies;
+        }
       }
       return payload;
     }
@@ -2233,6 +2543,14 @@
           </label>
         `;
       }).join("");
+      syncOverviewMarketplaceFilterBlocks();
+    }
+
+    function syncOverviewMarketplaceFilterBlocks() {
+      if (isMarketplaceRoute) return;
+      const selected = new Set(selectMarketplaceValues());
+      $("funpayFiltersContainer").classList.toggle("hidden", !selected.has("funpay"));
+      $("playerokFiltersContainer").classList.toggle("hidden", !selected.has("playerok"));
     }
 
     function syncHistoryMarketplaceFilter() {
@@ -2307,6 +2625,65 @@
       updateSectionSelectedCount();
     }
 
+    function updatePlayerOkSectionOptions() {
+      syncPlayerOkSectionSelectionFromDom();
+      const gameSlug = String($("pkGame").value || "").trim();
+      const searchValue = String($("pkSectionSearch").value || "").trim().toLowerCase();
+      const options = [];
+      const seen = new Set();
+      if (gameSlug) {
+        const game = playerokCategoriesCatalog.find((item) => String(item.game_slug) === gameSlug);
+        if (game) {
+          for (const section of game.sections || []) {
+            const slug = String(section.section_slug || "").trim();
+            if (!slug || seen.has(slug)) continue;
+            seen.add(slug);
+            options.push({
+              section_slug: slug,
+              full_name: section.full_name || slug,
+              game_name: game.game_name || gameSlug,
+            });
+          }
+        }
+      } else {
+        for (const game of playerokCategoriesCatalog) {
+          for (const section of game.sections || []) {
+            const slug = String(section.section_slug || "").trim();
+            if (!slug || seen.has(slug)) continue;
+            seen.add(slug);
+            options.push({
+              section_slug: slug,
+              full_name: section.full_name || slug,
+              game_name: game.game_name || game.game_slug,
+            });
+          }
+        }
+      }
+
+      const filtered = searchValue
+        ? options.filter((item) => `${item.full_name} ${item.game_name}`.toLowerCase().includes(searchValue))
+        : options;
+      const checklist = $("pkSectionChecklist");
+      if (!filtered.length) {
+        checklist.innerHTML = `<div class="section-empty">${currentUiLocale === "en" ? "No sections found by current filter." : "По текущему фильтру разделы не найдены."}</div>`;
+        updatePlayerOkSectionSelectedCount();
+        return;
+      }
+      checklist.innerHTML = filtered.map((item) => {
+        const checked = selectedPlayerOkSectionSlugs.has(item.section_slug) ? "checked" : "";
+        return `
+          <label class="check section-item">
+            <input type="checkbox" data-section-slug="${escapeHtml(item.section_slug)}" ${checked} />
+            <div>
+              <div><b>${escapeHtml(item.full_name)}</b></div>
+              <div class="hint">${escapeHtml(item.game_name)}</div>
+            </div>
+          </label>
+        `;
+      }).join("");
+      updatePlayerOkSectionSelectedCount();
+    }
+
     async function loadMarketplaces() {
       const data = await fetchJson("/v2/marketplaces");
       marketplacesCatalog = data.items || [];
@@ -2314,7 +2691,7 @@
       syncHistoryMarketplaceFilter();
     }
 
-    async function loadCategories() {
+    async function loadFunPayCategories() {
       const data = await fetchJson("/v2/marketplaces/funpay/categories");
       categoriesCatalog = data.games || [];
       selectedSectionIds = new Set();
@@ -2326,6 +2703,101 @@
       updateSectionOptions();
     }
 
+    function normalizePlayerOkGames(rawGames, assumeLoaded = false) {
+      const normalized = [];
+      const seenGames = new Set();
+      for (const game of rawGames) {
+        const gameIdRaw = game?.game_id;
+        const gameId = gameIdRaw === null || gameIdRaw === undefined ? null : String(gameIdRaw).trim() || null;
+        const gameSlug = String(game?.game_slug || "").trim().replace(/^\/+|\/+$/g, "");
+        const gameName = String(game?.game_name || "").trim();
+        if (!gameSlug || !gameName || seenGames.has(gameSlug)) continue;
+        seenGames.add(gameSlug);
+        const sections = [];
+        const seenSections = new Set();
+        for (const section of Array.isArray(game?.sections) ? game.sections : []) {
+          const sectionSlug = String(section?.section_slug || "").trim().replace(/^\/+|\/+$/g, "");
+          if (!sectionSlug || seenSections.has(sectionSlug)) continue;
+          seenSections.add(sectionSlug);
+          const sectionIdRaw = section?.section_id;
+          const sectionId = sectionIdRaw === null || sectionIdRaw === undefined ? null : String(sectionIdRaw).trim() || null;
+          sections.push({
+            section_id: sectionId,
+            section_slug: sectionSlug,
+            section_url: section?.section_url || `https://playerok.com/${sectionSlug}`,
+            section_name: section?.section_name || sectionSlug,
+            full_name: section?.full_name || `${gameName} > ${section?.section_name || sectionSlug}`,
+          });
+        }
+        normalized.push({
+          game_id: gameId,
+          game_slug: gameSlug,
+          game_name: gameName,
+          game_url: game?.game_url || `https://playerok.com/${gameSlug}`,
+          sections,
+          sections_loaded: Boolean(assumeLoaded || game?.sections_loaded === true),
+        });
+      }
+      return normalized;
+    }
+
+    function mergePlayerOkGames(games) {
+      const bySlug = new Map((playerokCategoriesCatalog || []).map((item) => [String(item.game_slug), item]));
+      for (const game of games || []) {
+        const slug = String(game.game_slug || "");
+        if (!slug) continue;
+        const existing = bySlug.get(slug);
+        if (!existing) {
+          bySlug.set(slug, game);
+          continue;
+        }
+        const existingSections = Array.isArray(existing.sections) ? existing.sections : [];
+        const incomingSections = Array.isArray(game.sections) ? game.sections : [];
+        const shouldReplaceSections = incomingSections.length > existingSections.length
+          || (game.sections_loaded && !existing.sections_loaded);
+        bySlug.set(slug, {
+          ...existing,
+          ...game,
+          sections: shouldReplaceSections ? incomingSections : existingSections,
+          sections_loaded: Boolean(existing.sections_loaded || game.sections_loaded),
+        });
+      }
+      playerokCategoriesCatalog = [...bySlug.values()].sort((left, right) =>
+        String(left.game_name || left.game_slug).localeCompare(String(right.game_name || right.game_slug))
+      );
+    }
+
+    function renderPlayerOkGamesSelect() {
+      selectedPlayerOkSectionSlugs = new Set();
+      const options = ['<option value="">Любая игра</option>'];
+      for (const game of playerokCategoriesCatalog) {
+        options.push(`<option value="${escapeHtml(game.game_slug)}">${escapeHtml(game.game_name)}</option>`);
+      }
+      $("pkGame").innerHTML = options.join("");
+      updatePlayerOkSectionOptions();
+    }
+
+    async function ensurePlayerOkGameSections(gameSlug) {
+      const slug = String(gameSlug || "").trim().replace(/^\/+|\/+$/g, "");
+      if (!slug) return;
+      const current = playerokCategoriesCatalog.find((item) => String(item.game_slug) === slug);
+      if (current && current.sections_loaded && Array.isArray(current.sections) && current.sections.length > 0) {
+        return;
+      }
+      const data = await fetchJson(`/v2/marketplaces/playerok/categories?game_slug=${encodeURIComponent(slug)}`);
+      const loadedGames = normalizePlayerOkGames(Array.isArray(data.games) ? data.games : [], true);
+      if (!loadedGames.length) return;
+      mergePlayerOkGames(loadedGames);
+    }
+
+    async function loadPlayerOkCategories() {
+      const data = await fetchJson("/v2/marketplaces/playerok/categories");
+      const normalized = normalizePlayerOkGames(Array.isArray(data.games) ? data.games : [], false);
+      playerokCategoriesCatalog = [];
+      mergePlayerOkGames(normalized);
+      renderPlayerOkGamesSelect();
+    }
+
     function updateRunId(runId) {
       if (!runId) return;
       selectedRunId = runId;
@@ -2335,6 +2807,41 @@
     }
 
     function renderCategoryScope(item) {
+      const playerokSectionBySlug = new Map();
+      const playerokGameBySlug = new Map();
+      for (const game of playerokCategoriesCatalog || []) {
+        playerokGameBySlug.set(String(game.game_slug), game);
+        for (const section of game.sections || []) {
+          playerokSectionBySlug.set(String(section.section_slug), section);
+        }
+      }
+      const playerokCategorySlugs = Array.isArray(item.category_slugs) ? item.category_slugs : [];
+      if (playerokCategorySlugs.length || item.category_game_slug) {
+        const links = [];
+        for (const rawSlug of playerokCategorySlugs) {
+          const slug = String(rawSlug || "").trim();
+          if (!slug) continue;
+          const section = playerokSectionBySlug.get(slug);
+          if (section) {
+            links.push(`<a href="${escapeHtml(section.section_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.full_name)}</a>`);
+            continue;
+          }
+          const fallbackUrl = slug.startsWith("categories/")
+            ? `https://playerok.com/${slug}`
+            : `https://playerok.com/${slug}`;
+          links.push(`<a href="${escapeHtml(fallbackUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(slug)}</a>`);
+        }
+        if (!links.length && item.category_game_slug) {
+          const game = playerokGameBySlug.get(String(item.category_game_slug));
+          if (game) {
+            links.push(`<a href="${escapeHtml(game.game_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(game.game_name)}</a>`);
+          } else {
+            links.push(`<a href="https://playerok.com/${escapeHtml(item.category_game_slug)}" target="_blank" rel="noopener noreferrer">${currentUiLocale === "en" ? "Game" : "Игра"} ${escapeHtml(item.category_game_slug)}</a>`);
+          }
+        }
+        return links.length ? links.join(", ") : "—";
+      }
+
       const sectionById = new Map();
       const gameById = new Map();
       for (const game of categoriesCatalog || []) {
@@ -2382,7 +2889,7 @@
         const queryFilter = $("historyQueryFilter").value.trim().toLowerCase();
         const marketplaceFilter = $("historyMarketplaceFilter").value;
         const filteredItems = items.filter((item) => {
-          const query = String(item.query || "").toLowerCase();
+          const query = String(formatHistoryQuery(item.query) || "").toLowerCase();
           if (queryFilter && !query.includes(queryFilter)) return false;
           if (marketplaceFilter) {
             const marketplaces = Array.isArray(item.marketplaces) ? item.marketplaces : [];
@@ -2406,7 +2913,7 @@
           const categoryScopeHtml = renderCategoryScope(item);
           const summary = `
             <div class="summary-grid">
-              <span><b>${escapeHtml(item.query && item.query.trim() ? item.query : t("emptyQueryLabel"))}</b><br/><span class="muted">${new Date(item.generated_at).toLocaleString(localeTag())}</span></span>
+              <span><b>${escapeHtml(formatHistoryQuery(item.query))}</b><br/><span class="muted">${new Date(item.generated_at).toLocaleString(localeTag())}</span></span>
               <span>${currentUiLocale === "en" ? "Marketplaces" : "Площадки"}: <b>${escapeHtml(marketplacesText || "—")}</b></span>
               <span>${currentUiLocale === "en" ? "Offers" : "Офферы"}: <b>${formatNum(item.pooled_matched_offers)}</b></span>
               <span>${currentUiLocale === "en" ? "Sellers" : "Продавцы"}: <b>${formatNum(item.pooled_unique_sellers)}</b></span>
@@ -2517,7 +3024,10 @@
         setStatus(t("runStart"), "warn");
         const data = await fetchJson("/v2/analyze", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Accept": "application/json",
+          },
           body: JSON.stringify(payload),
         });
         updateRunId(data.run_id);
@@ -2563,6 +3073,7 @@
       $("historyRefreshBtn").addEventListener("click", renderHistory);
       $("historyQueryFilter").addEventListener("input", renderHistory);
       $("historyMarketplaceFilter").addEventListener("change", renderHistory);
+      $("marketplaceChecks").addEventListener("change", syncOverviewMarketplaceFilterBlocks);
       runIdInput.addEventListener("input", updateNavLinks);
       $("fpQuickPreset").addEventListener("change", (event) => {
         const preset = String(event.target.value || "custom");
@@ -2630,6 +3141,49 @@
       $("fpIncludeDemand").addEventListener("change", (event) => {
         if (event.target.checked) $("fpIncludeReviews").checked = true;
       });
+      $("pkGame").addEventListener("change", async () => {
+        const gameSlug = String($("pkGame").value || "").trim();
+        if (gameSlug) {
+          try {
+            await ensurePlayerOkGameSections(gameSlug);
+          } catch (_) {
+            // keep current catalog snapshot if details loading fails
+          }
+        }
+        selectedPlayerOkSectionSlugs = new Set();
+        updatePlayerOkSectionOptions();
+      });
+      $("pkSectionSearch").addEventListener("input", updatePlayerOkSectionOptions);
+      $("pkSectionChecklist").addEventListener("change", () => {
+        syncPlayerOkSectionSelectionFromDom();
+        updatePlayerOkSectionSelectedCount();
+      });
+      $("pkSectionSelectVisible").addEventListener("click", () => {
+        const nodes = Array.from($("pkSectionChecklist").querySelectorAll("input[type='checkbox'][data-section-slug]"));
+        for (const node of nodes) {
+          const slug = String(node.getAttribute("data-section-slug") || "").trim();
+          if (!slug) continue;
+          node.checked = true;
+          selectedPlayerOkSectionSlugs.add(slug);
+        }
+        updatePlayerOkSectionSelectedCount();
+      });
+      $("pkSectionClearVisible").addEventListener("click", () => {
+        const nodes = Array.from($("pkSectionChecklist").querySelectorAll("input[type='checkbox'][data-section-slug]"));
+        for (const node of nodes) {
+          const slug = String(node.getAttribute("data-section-slug") || "").trim();
+          if (!slug) continue;
+          node.checked = false;
+          selectedPlayerOkSectionSlugs.delete(slug);
+        }
+        updatePlayerOkSectionSelectedCount();
+      });
+      $("pkIncludeDemand").addEventListener("change", (event) => {
+        if (event.target.checked) $("pkIncludeReviews").checked = true;
+      });
+      $("pkTabMainBtn").addEventListener("click", () => setPlayerOkTab("main"));
+      $("pkTabSettingsBtn").addEventListener("click", () => setPlayerOkTab("settings"));
+      $("pkAdvancedMode").addEventListener("change", syncPlayerOkAdvancedState);
       $("sellerFocusApplyFilterBtn").addEventListener("click", () => {
         if (!sellerFocusPoint) return;
         const queryValue = sellerFocusPoint.seller_id !== null && sellerFocusPoint.seller_id !== undefined
@@ -2702,6 +3256,8 @@
       applyUiLocale();
       routeVisibility();
       applyFormMode();
+      setPlayerOkTab("main");
+      syncPlayerOkAdvancedState();
       attachEvents();
       try {
         const urlRunId = new URLSearchParams(window.location.search).get("run_id");
@@ -2711,7 +3267,12 @@
         updateNavLinks();
 
         await loadMarketplaces();
-        await loadCategories();
+        await loadFunPayCategories();
+        try {
+          await loadPlayerOkCategories();
+        } catch (_) {
+          playerokCategoriesCatalog = [];
+        }
         await renderHistory();
 
         if (selectedRunId) {
