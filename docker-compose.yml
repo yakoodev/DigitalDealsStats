@@ -1,0 +1,80 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: funpaystat-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      APP_NAME: MarketStat
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+psycopg://funpay:funpay@postgres:5432/funpaystat
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUE_NAME: funpaystat
+      RQ_JOB_TIMEOUT_SECONDS: 600
+      CACHE_TTL_HOURS: 24
+      FUNPAY_LOCALE: en
+      FUNPAY_REQUEST_TIMEOUT: 20
+      FUNPAY_MAX_RETRIES: 5
+      FUNPAY_BASE_BACKOFF_SECONDS: 0.8
+      FUNPAY_MIN_DELAY_SECONDS: 0.25
+      FUNPAY_JITTER_MIN: 0.3
+      FUNPAY_JITTER_MAX: 0.9
+      LOW_COVERAGE_MIN_MATCHED_OFFERS: 25
+      QUICK_SECTIONS_LIMIT: 80
+      FALLBACK_SECTIONS_LIMIT: 120
+      DEMAND_MAX_SELLERS: 40
+      REVIEW_MAX_PAGES_PER_SELLER: 4
+      DATACENTER_PROXIES: ""
+      RESIDENTIAL_PROXIES: ""
+      MOBILE_PROXIES: ""
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: funpaystat-worker
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://funpay:funpay@postgres:5432/funpaystat
+      REDIS_URL: redis://redis:6379/0
+      RQ_QUEUE_NAME: funpaystat
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: funpaystat-postgres
+    environment:
+      POSTGRES_DB: funpaystat
+      POSTGRES_USER: funpay
+      POSTGRES_PASSWORD: funpay
+    volumes:
+      - funpaystat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U funpay -d funpaystat"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: funpaystat-redis
+    restart: unless-stopped
+
+volumes:
+  funpaystat_pgdata:

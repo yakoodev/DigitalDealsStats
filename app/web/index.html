@@ -1,0 +1,1796 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MarketStat v2</title>
+  <style>
+    :root {
+      --bg: #f3f7ff;
+      --panel: #ffffff;
+      --line: #d7e1f1;
+      --text: #12213a;
+      --muted: #5a6a84;
+      --brand: #0b78f5;
+      --ok: #138a50;
+      --warn: #9d680f;
+      --err: #bd3045;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 420px at 10% -20%, #dbe9ff 0%, transparent 65%),
+        radial-gradient(1000px 380px at 95% -30%, #ffe8bf 0%, transparent 68%),
+        var(--bg);
+    }
+    .app {
+      max-width: 1450px;
+      margin: 20px auto;
+      padding: 0 16px 26px;
+      display: grid;
+      gap: 12px;
+    }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: end;
+    }
+    .title {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.05;
+    }
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 7px 12px;
+      white-space: nowrap;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 14px;
+      box-shadow: 0 12px 26px rgba(18, 33, 58, 0.07);
+      overflow: hidden;
+    }
+    .head {
+      font-weight: 800;
+      font-size: 14px;
+      color: #23395e;
+      background: linear-gradient(180deg, #f7faff 0%, #fff 100%);
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .body {
+      padding: 12px 14px;
+    }
+    .nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .nav a {
+      color: #274166;
+      text-decoration: none;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .nav a.active {
+      color: #fff;
+      border-color: #065fc6;
+      background: linear-gradient(135deg, #0f7cff 0%, #065fc6 100%);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 1240px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .grid-3 {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    @media (max-width: 900px) {
+      .grid, .grid-3 { grid-template-columns: 1fr; }
+    }
+    .full { grid-column: 1 / -1; }
+    label {
+      display: block;
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    input, select, textarea, button {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 14px;
+      color: var(--text);
+      background: #fff;
+    }
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 5px;
+    }
+    .checks {
+      display: grid;
+      gap: 6px;
+    }
+    .check {
+      display: flex;
+      gap: 8px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfdff;
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+    .check input { width: auto; margin: 2px 0 0; }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .actions button {
+      width: auto;
+      min-width: 140px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .actions.compact { margin-top: 6px; }
+    .link-btn {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #223b61;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    .link-btn.disabled {
+      pointer-events: none;
+      opacity: 0.55;
+    }
+    .btn {
+      border: none;
+      color: #fff;
+      background: linear-gradient(135deg, #0f7cff 0%, #065fc6 100%);
+    }
+    .btn-secondary {
+      background: #fff;
+      color: #223b61;
+      border: 1px solid var(--line);
+    }
+    .status {
+      border: 1px solid var(--line);
+      background: #f8fbff;
+      border-radius: 10px;
+      padding: 9px 11px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .status.ok { color: var(--ok); background: #ecfbf3; border-color: #bce8d0; }
+    .status.warn { color: var(--warn); background: #fff8ea; border-color: #ecd9b3; }
+    .status.err { color: var(--err); background: #fff1f4; border-color: #f3c8d0; }
+    .progress {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 9px;
+      margin-bottom: 8px;
+    }
+    .bar {
+      width: 100%;
+      height: 11px;
+      border: 1px solid #cbd8ef;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #edf3ff;
+    }
+    .bar > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0b78f5 0%, #3cafff 100%);
+      transition: width 0.2s ease;
+    }
+    .progress-meta {
+      margin-top: 7px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .log {
+      max-height: 190px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-top: 8px;
+    }
+    .kpi {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    @media (max-width: 980px) {
+      .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: #fff;
+    }
+    .card .name {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.35px;
+      margin-bottom: 5px;
+      font-weight: 700;
+    }
+    .card .value {
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.08;
+    }
+    .stack { display: grid; gap: 10px; }
+    .split { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 980px) {
+      .split { grid-template-columns: 1fr; }
+    }
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      max-height: 360px;
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid #edf2fb;
+      padding: 7px 8px;
+      vertical-align: top;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f7faff;
+      color: #30476f;
+      font-weight: 800;
+    }
+    .mono { font-family: Consolas, "Courier New", monospace; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .warn-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #8f4f03;
+      font-size: 13px;
+    }
+    .chart-box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 8px;
+    }
+    canvas {
+      width: 100%;
+      height: 220px;
+      display: block;
+      border-radius: 8px;
+      background: #f8fbff;
+    }
+    .tooltip {
+      position: fixed;
+      z-index: 40;
+      pointer-events: none;
+      display: none;
+      max-width: 300px;
+      background: #102038;
+      border: 1px solid #426291;
+      border-radius: 8px;
+      color: #e1eeff;
+      white-space: pre-line;
+      font-size: 12px;
+      padding: 8px 10px;
+      box-shadow: 0 10px 22px rgba(2, 10, 29, 0.4);
+    }
+    details.history-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    details.history-item > summary {
+      list-style: none;
+      cursor: pointer;
+      font-weight: 700;
+      padding: 8px 10px;
+      border-bottom: 1px solid #edf2fb;
+    }
+    details.history-item > summary::-webkit-details-marker { display: none; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr 1fr 1fr 1fr;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+    @media (max-width: 980px) {
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+    .subitem {
+      margin: 8px 10px;
+      border: 1px solid #e6ecf8;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fbfdff;
+      font-size: 12px;
+    }
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      background: #fff;
+      color: #294369;
+    }
+    .badge.enabled {
+      color: #136e44;
+      border-color: #bce8d0;
+      background: #ecfbf3;
+    }
+    .badge.disabled {
+      color: #8b4f03;
+      border-color: #ecd9b3;
+      background: #fff8ea;
+    }
+    .history-tools {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr auto;
+      gap: 8px;
+      align-items: end;
+      margin-top: 0;
+    }
+    @media (max-width: 980px) {
+      .history-tools {
+        grid-template-columns: 1fr;
+      }
+    }
+    .chip-inline {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 7px 10px;
+      white-space: nowrap;
+    }
+    .help-inline {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: auto;
+      align-self: center;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <div>
+        <h1 class="title">MarketStat v2</h1>
+        <p class="subtitle">Мульти-площадочная аналитика: общий обзор + детализация по площадкам.</p>
+      </div>
+      <div class="chip" id="lastUpdateChip">Ожидание запуска</div>
+    </div>
+
+    <div class="panel">
+      <div class="head">Навигация</div>
+      <div class="body">
+        <nav class="nav">
+          <a id="navOverview" href="/">Общий анализ</a>
+          <a id="navFunPay" href="/analysis/funpay">FunPay</a>
+        </nav>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section class="panel">
+        <div class="head">Фильтры запуска</div>
+        <div class="body">
+          <div class="grid">
+            <div class="full">
+              <label for="query">Запрос</label>
+              <input id="query" type="text" placeholder="Например: project zomboid аренда" />
+              <div class="hint">Пустой запрос для FunPay допускается только при выбранной категории/разделе.</div>
+            </div>
+
+            <div>
+              <label for="currency">Валюта</label>
+              <select id="currency">
+                <option value="RUB" selected>RUB</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+            <div>
+              <label for="execution">Выполнение</label>
+              <select id="execution">
+                <option value="auto" selected>auto</option>
+                <option value="sync">sync</option>
+                <option value="async">async</option>
+              </select>
+            </div>
+
+            <div class="full">
+              <label>Площадки</label>
+              <div id="marketplaceChecks" class="checks"></div>
+            </div>
+          </div>
+
+          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">FunPay фильтры</div>
+          <div class="grid">
+            <div>
+              <label for="fpContentLocale">Локаль контента</label>
+              <select id="fpContentLocale">
+                <option value="auto" selected>auto</option>
+                <option value="ru">ru</option>
+                <option value="en">en</option>
+              </select>
+            </div>
+            <div>
+              <label for="fpProfile">Профиль</label>
+              <select id="fpProfile">
+                <option value="safe">safe</option>
+                <option value="balanced" selected>balanced</option>
+                <option value="deep">deep</option>
+              </select>
+            </div>
+            <div class="full">
+              <label for="fpGame">Категория (игра)</label>
+              <select id="fpGame">
+                <option value="">Любая игра</option>
+              </select>
+            </div>
+            <div class="full">
+              <label for="fpSection">Раздел категории</label>
+              <select id="fpSection">
+                <option value="">Любой раздел</option>
+              </select>
+            </div>
+            <div>
+              <label for="fpSectionLimit">section_limit</label>
+              <input id="fpSectionLimit" type="number" min="1" max="500" placeholder="по профилю" />
+            </div>
+            <div>
+              <label for="fpSellerLimit">seller_limit</label>
+              <input id="fpSellerLimit" type="number" min="1" max="500" placeholder="по профилю" />
+            </div>
+            <div>
+              <label for="fpReviewPages">review_pages_per_seller</label>
+              <input id="fpReviewPages" type="number" min="1" max="20" placeholder="по профилю" />
+            </div>
+            <div>
+              <label for="fpHistoryPoints">history_points_limit</label>
+              <input id="fpHistoryPoints" type="number" min="5" max="365" value="60" />
+            </div>
+            <div class="full checks">
+              <label class="check"><input id="forceRefresh" type="checkbox" />force_refresh</label>
+              <label class="check"><input id="fpIncludeReviews" type="checkbox" />include_reviews</label>
+              <label class="check"><input id="fpIncludeDemand" type="checkbox" />include_demand_index</label>
+              <label class="check"><input id="fpIncludeFallback" type="checkbox" checked />include_fallback_scan</label>
+            </div>
+          </div>
+
+          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">Прокси FunPay</div>
+          <div class="grid">
+            <div>
+              <label for="fpDcProxy">Datacenter</label>
+              <textarea id="fpDcProxy" placeholder="45.88.208.237:1508@user:pass"></textarea>
+            </div>
+            <div>
+              <label for="fpResProxy">Residential</label>
+              <textarea id="fpResProxy" placeholder="http://user:pass@ip:port"></textarea>
+            </div>
+            <div class="full">
+              <label for="fpMobProxy">Mobile</label>
+              <textarea id="fpMobProxy" placeholder="http://user:pass@ip:port"></textarea>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="runBtn" class="btn">Запустить v2 анализ</button>
+            <button id="refreshBtn" class="btn-secondary">Обновить статус</button>
+          </div>
+          <div style="margin-top:8px;">
+            <label for="runIdInput">run_id</label>
+            <input id="runIdInput" type="text" placeholder="UUID запуска" />
+            <div class="actions compact">
+              <button id="copyRunIdBtn" class="btn-secondary">Копировать run_id</button>
+              <a id="openRunOverviewLink" class="link-btn disabled" href="#">Открыть overview</a>
+              <a id="openRunMarketplaceLink" class="link-btn disabled" href="#">Открыть FunPay</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stack">
+        <div class="panel">
+          <div class="head">Статус запуска</div>
+          <div class="body">
+            <div id="statusBanner" class="status">Ожидание запуска</div>
+            <div class="progress">
+              <div class="bar"><div id="progressFill"></div></div>
+              <div class="progress-meta">
+                <span id="progressStage">Этап: ожидание</span>
+                <span id="progressPercent">0%</span>
+              </div>
+              <div id="progressMessage" class="hint">Логи появятся во время выполнения.</div>
+              <div class="log">
+                <table id="progressTable"></table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="overviewPage" class="stack">
+          <div class="panel">
+            <div class="head">Overview: pooled метрики</div>
+            <div class="body">
+              <div id="overviewKpi" class="kpi"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="head">Сравнение площадок</div>
+            <div class="body">
+              <div class="table-wrap">
+                <table id="comparisonTable"></table>
+              </div>
+              <div id="aggregatesBlock" class="hint" style="margin-top:8px;">Нет данных.</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="marketplacePage" class="stack hidden">
+          <div class="panel">
+            <div class="head">Детальный анализ площадки</div>
+            <div class="body">
+              <div id="marketplaceMeta" class="muted">Нет данных по площадке.</div>
+              <div id="marketplaceKpi" class="kpi" style="margin-top:8px;"></div>
+              <div id="marketplaceWarnings" style="margin-top:8px;"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="head">Графики площадки</div>
+            <div class="body split">
+              <div class="chart-box">
+                <div class="hint">Гистограмма цен (по полному срезу)</div>
+                <canvas id="marketPriceCanvas" width="700" height="260"></canvas>
+              </div>
+              <div class="chart-box">
+                <div class="hint">История запусков (matched_offers)</div>
+                <canvas id="marketHistoryCanvas" width="700" height="260"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="head">Топ данные площадки</div>
+            <div class="body split">
+              <div>
+                <div class="hint">Топ офферы</div>
+                <div class="table-wrap"><table id="topOffersTable"></table></div>
+              </div>
+              <div>
+                <div class="hint">Топ продавцы</div>
+                <div class="table-wrap"><table id="topSellersTable"></table></div>
+              </div>
+            </div>
+            <div class="body" style="padding-top:0;">
+              <div class="hint">Покрытие разделов</div>
+              <div class="table-wrap"><table id="sectionsTable"></table></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="head">Полный срез офферов площадки</div>
+            <div class="body">
+              <div class="grid-3">
+                <div>
+                  <label for="offersPriceMin">Цена от</label>
+                  <input id="offersPriceMin" type="number" min="0" step="0.01" />
+                </div>
+                <div>
+                  <label for="offersPriceMax">Цена до</label>
+                  <input id="offersPriceMax" type="number" min="0" step="0.01" />
+                </div>
+                <div>
+                  <label for="offersMinReviews">Мин. отзывов</label>
+                  <input id="offersMinReviews" type="number" min="0" step="1" />
+                </div>
+                <div>
+                  <label for="offersSellerQuery">Поиск продавца</label>
+                  <input id="offersSellerQuery" type="text" />
+                </div>
+                <div class="checks">
+                  <label class="check"><input id="offersOnlineOnly" type="checkbox" />Только онлайн</label>
+                </div>
+                <div class="checks">
+                  <label class="check"><input id="offersAutoOnly" type="checkbox" />Только автовыдача</label>
+                </div>
+                <div>
+                  <label for="offersSort">Сортировка</label>
+                  <select id="offersSort">
+                    <option value="price_asc" selected>Цена: по возрастанию</option>
+                    <option value="price_desc">Цена: по убыванию</option>
+                    <option value="reviews_desc">Отзывы: по убыванию</option>
+                    <option value="seller_asc">Продавец: А-Я</option>
+                    <option value="offer_desc">offer_id: новые выше</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="offersPageSize">Размер страницы</label>
+                  <select id="offersPageSize">
+                    <option value="20">20</option>
+                    <option value="40" selected>40</option>
+                    <option value="80">80</option>
+                    <option value="150">150</option>
+                  </select>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="applyOfferFiltersBtn" class="btn-secondary">Применить фильтры</button>
+                <button id="resetOfferFiltersBtn" class="btn-secondary">Сбросить</button>
+                <button id="exportOffersCsvBtn" class="btn-secondary">Экспорт CSV (фильтр)</button>
+              </div>
+              <div id="offersPageMeta" class="hint"></div>
+              <div class="table-wrap"><table id="offersTable"></table></div>
+              <div class="actions">
+                <button id="offersPrevBtn" class="btn-secondary">Пред. страница</button>
+                <button id="offersNextBtn" class="btn-secondary">След. страница</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="head">История запусков v2</div>
+          <div class="body">
+            <div class="history-tools">
+              <div>
+                <label for="historyQueryFilter">Фильтр по запросу</label>
+                <input id="historyQueryFilter" type="text" placeholder="Например: zomboid" />
+              </div>
+              <div>
+                <label for="historyMarketplaceFilter">Фильтр по площадке</label>
+                <select id="historyMarketplaceFilter">
+                  <option value="">Все площадки</option>
+                </select>
+              </div>
+              <button id="historyRefreshBtn" class="btn-secondary">Обновить историю</button>
+            </div>
+            <div id="historyCount" class="help-inline">История не загружена.</div>
+            <div id="historyHost" style="margin-top:8px;"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const statusBanner = $("statusBanner");
+    const runIdInput = $("runIdInput");
+    const lastUpdateChip = $("lastUpdateChip");
+    const tooltip = $("tooltip");
+    const progressFill = $("progressFill");
+    const progressStage = $("progressStage");
+    const progressPercent = $("progressPercent");
+    const progressMessage = $("progressMessage");
+    const progressTable = $("progressTable");
+    const overviewPage = $("overviewPage");
+    const marketplacePage = $("marketplacePage");
+    const historyHost = $("historyHost");
+
+    let pollTimer = null;
+    let selectedRunId = null;
+    let marketplacesCatalog = [];
+    let categoriesCatalog = [];
+    let currentMarketplaceResult = null;
+    let fullOffers = [];
+    let filteredOffers = [];
+    let offersPage = 0;
+
+    const routePath = window.location.pathname;
+    const isMarketplaceRoute = routePath.startsWith("/analysis/");
+    const activeMarketplace = isMarketplaceRoute ? routePath.split("/")[2] : null;
+
+    const chartState = {
+      price: { bins: [], bars: [], hoverIndex: -1, canvas: $("marketPriceCanvas") },
+      history: { points: [], coords: [], hoverIndex: -1, canvas: $("marketHistoryCanvas") },
+    };
+
+    function safeUrl(url) {
+      if (!url) return null;
+      try {
+        const parsed = new URL(url, window.location.origin);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.toString();
+      } catch (_) {
+        return null;
+      }
+      return null;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function formatNum(value) {
+      if (value === null || value === undefined) return "—";
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "—";
+      return number.toLocaleString("ru-RU");
+    }
+
+    function currencyMark(raw) {
+      const value = String(raw ?? "").toUpperCase();
+      if (value === "RUB" || raw === "₽") return "₽";
+      if (value === "USD" || raw === "$") return "$";
+      if (value === "EUR" || raw === "€") return "€";
+      return raw ?? "";
+    }
+
+    function formatMoney(value, currency = "RUB") {
+      if (value === null || value === undefined) return "—";
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "—";
+      const mark = currencyMark(currency);
+      const base = number.toLocaleString("ru-RU", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+      return mark ? `${base} ${mark}` : base;
+    }
+
+    function formatPct(value) {
+      if (value === null || value === undefined) return "—";
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "—";
+      return `${(number * 100).toFixed(1)}%`;
+    }
+
+    function readInt(id) {
+      const raw = $(id).value.trim();
+      if (!raw) return null;
+      const number = Number(raw);
+      return Number.isFinite(number) ? Math.floor(number) : null;
+    }
+
+    function readFloat(id) {
+      const raw = $(id).value.trim();
+      if (!raw) return null;
+      const number = Number(raw);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function parseLines(id) {
+      return $(id).value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+    }
+
+    function setStatus(text, mode = "") {
+      statusBanner.textContent = text;
+      statusBanner.className = `status ${mode}`.trim();
+    }
+
+    async function fetchJson(url, options = null) {
+      const response = await fetch(url, options || undefined);
+      const data = await response.json();
+      if (!response.ok) {
+        const detail = data?.detail;
+        if (typeof detail === "string") throw new Error(detail);
+        if (detail && typeof detail === "object") throw new Error(detail.message || JSON.stringify(detail));
+        throw new Error(JSON.stringify(data));
+      }
+      return data;
+    }
+
+    function updateNavLinks() {
+      const runPart = selectedRunId ? `?run_id=${encodeURIComponent(selectedRunId)}` : "";
+      $("navOverview").href = `/${runPart}`;
+      $("navFunPay").href = `/analysis/funpay${runPart}`;
+      $("navOverview").classList.toggle("active", !isMarketplaceRoute);
+      $("navFunPay").classList.toggle("active", activeMarketplace === "funpay");
+
+      const runId = runIdInput.value.trim() || selectedRunId || "";
+      const overviewLink = $("openRunOverviewLink");
+      const funpayLink = $("openRunMarketplaceLink");
+      if (!runId) {
+        overviewLink.href = "#";
+        overviewLink.classList.add("disabled");
+        funpayLink.href = "#";
+        funpayLink.classList.add("disabled");
+      } else {
+        overviewLink.href = `/?run_id=${encodeURIComponent(runId)}`;
+        overviewLink.classList.remove("disabled");
+        funpayLink.href = `/analysis/funpay?run_id=${encodeURIComponent(runId)}`;
+        funpayLink.classList.remove("disabled");
+      }
+    }
+
+    function marketplaceLabel(slug) {
+      const item = (marketplacesCatalog || []).find((m) => m.slug === slug);
+      return item?.label || slug;
+    }
+
+    function routeVisibility() {
+      overviewPage.classList.toggle("hidden", isMarketplaceRoute);
+      marketplacePage.classList.toggle("hidden", !isMarketplaceRoute);
+    }
+
+    function renderProgress(envelope) {
+      const progress = envelope?.progress || {};
+      const status = envelope?.status || "pending";
+      const percentRaw = Number(progress.percent);
+      const percent = Number.isFinite(percentRaw) ? Math.max(0, Math.min(100, percentRaw)) : (status === "done" ? 100 : 0);
+      progressFill.style.width = `${percent}%`;
+      progressPercent.textContent = `${percent.toFixed(0)}%`;
+      progressStage.textContent = `Этап: ${progress.stage || status}`;
+      progressMessage.textContent = progress.message || "Нет подробностей.";
+      const logs = Array.isArray(progress.logs) ? progress.logs : [];
+      renderTable(
+        progressTable,
+        [
+          { label: "Время", render: (r) => new Date(r.ts).toLocaleTimeString("ru-RU") },
+          { label: "Этап", render: (r) => r.stage || "info" },
+          { label: "Событие", render: (r) => r.message || "—" },
+        ],
+        logs
+      );
+    }
+
+    function renderTable(host, columns, rows) {
+      if (!rows || rows.length === 0) {
+        host.innerHTML = `<thead><tr>${columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("")}</tr></thead><tbody><tr><td colspan="${columns.length}">Нет данных</td></tr></tbody>`;
+        return;
+      }
+      const head = `<thead><tr>${columns.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("")}</tr></thead>`;
+      const body = `<tbody>${rows.map((row) => `<tr>${columns.map((c) => {
+        const rendered = c.render(row);
+        const content = c.isHtml ? String(rendered ?? "—") : escapeHtml(rendered ?? "—");
+        return `<td class="${c.className || ""}">${content}</td>`;
+      }).join("")}</tr>`).join("")}</tbody>`;
+      host.innerHTML = head + body;
+    }
+
+    function renderOverview(overview) {
+      const pooled = overview?.pooled_offers_stats || {};
+      const cards = [
+        ["Офферов (pooled)", formatNum(pooled.matched_offers)],
+        ["Уникальных продавцов", formatNum(pooled.unique_sellers)],
+        ["Мин. цена", formatMoney(pooled.min_price, $("currency").value)],
+        ["Средняя цена", formatMoney(pooled.avg_price, $("currency").value)],
+        ["P50", formatMoney(pooled.p50_price, $("currency").value)],
+        ["P90", formatMoney(pooled.p90_price, $("currency").value)],
+        ["Макс. цена", formatMoney(pooled.max_price, $("currency").value)],
+        ["Доля онлайн", formatPct(pooled.online_share)],
+      ];
+      $("overviewKpi").innerHTML = cards.map(([n, v]) =>
+        `<div class="card"><div class="name">${escapeHtml(n)}</div><div class="value">${v}</div></div>`
+      ).join("");
+
+      renderTable(
+        $("comparisonTable"),
+        [
+          { label: "Площадка", render: (r) => r.label || r.marketplace },
+          { label: "Офферы", render: (r) => formatNum(r.matched_offers) },
+          { label: "Продавцы", render: (r) => formatNum(r.unique_sellers) },
+          { label: "P50", render: (r) => formatMoney(r.p50_price, $("currency").value) },
+          { label: "Demand", render: (r) => (r.demand_index === null || r.demand_index === undefined ? "—" : Number(r.demand_index).toFixed(2)) },
+        ],
+        overview?.comparison || []
+      );
+      const aggr = overview?.aggregates || {};
+      $("aggregatesBlock").innerHTML = `
+        Средние по площадкам:
+        matched_offers=<b>${formatNum(aggr.avg_matched_offers)}</b>,
+        unique_sellers=<b>${formatNum(aggr.avg_unique_sellers)}</b>,
+        p50=<b>${formatMoney(aggr.avg_p50_price, $("currency").value)}</b>
+      `;
+    }
+
+    function histogramBins(values, binsCount = 10) {
+      const clean = values.filter((v) => Number.isFinite(v));
+      if (!clean.length) return [];
+      const min = Math.min(...clean);
+      const max = Math.max(...clean);
+      if (min === max) {
+        return [{ label: `${min.toFixed(2)}`, from: min, to: max, count: clean.length }];
+      }
+      const step = (max - min) / binsCount;
+      const buckets = Array.from({ length: binsCount }, () => 0);
+      for (const price of clean) {
+        let idx = Math.floor((price - min) / step);
+        idx = Math.max(0, Math.min(binsCount - 1, idx));
+        buckets[idx] += 1;
+      }
+      return buckets.map((count, i) => {
+        const left = min + i * step;
+        const right = i === binsCount - 1 ? max : min + (i + 1) * step;
+        return {
+          label: `${left.toFixed(2)} - ${right.toFixed(2)}`,
+          from: left,
+          to: right,
+          count,
+        };
+      });
+    }
+
+    function drawPriceHistogram(bins, hoverIndex = -1) {
+      const canvas = chartState.price.canvas;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const margin = 30;
+      const chartW = w - margin * 2;
+      const chartH = h - margin * 2;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#f8fbff";
+      ctx.fillRect(0, 0, w, h);
+
+      if (!bins.length) {
+        ctx.fillStyle = "#667ca1";
+        ctx.font = "13px sans-serif";
+        ctx.fillText("Нет данных", 12, 24);
+        chartState.price.bars = [];
+        return;
+      }
+
+      const maxCount = Math.max(...bins.map((b) => b.count), 1);
+      const bw = chartW / bins.length;
+      const bars = [];
+      bins.forEach((bin, idx) => {
+        const x = margin + idx * bw + 3;
+        const height = (bin.count / maxCount) * (chartH - 8);
+        const y = margin + chartH - height;
+        const width = bw - 6;
+        ctx.fillStyle = idx === hoverIndex ? "#ff8d2f" : "#0b78f5";
+        ctx.fillRect(x, y, width, height);
+        bars.push({ x, y, width, height, index: idx, bin });
+      });
+      ctx.strokeStyle = "#9db2d5";
+      ctx.beginPath();
+      ctx.moveTo(margin, margin);
+      ctx.lineTo(margin, margin + chartH);
+      ctx.lineTo(margin + chartW, margin + chartH);
+      ctx.stroke();
+      chartState.price.bins = bins;
+      chartState.price.bars = bars;
+      chartState.price.hoverIndex = hoverIndex;
+    }
+
+    function drawHistory(points, hoverIndex = -1) {
+      const canvas = chartState.history.canvas;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const margin = 30;
+      const chartW = w - margin * 2;
+      const chartH = h - margin * 2;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#f8fbff";
+      ctx.fillRect(0, 0, w, h);
+
+      if (!points || points.length < 2) {
+        ctx.fillStyle = "#667ca1";
+        ctx.font = "13px sans-serif";
+        ctx.fillText("Недостаточно истории", 12, 24);
+        chartState.history.coords = [];
+        return;
+      }
+
+      const values = points.map((p) => Number(p.matched_offers || 0));
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = max - min || 1;
+      const coords = points.map((point, idx) => {
+        const x = margin + (idx / (points.length - 1)) * chartW;
+        const y = margin + chartH - ((Number(point.matched_offers || 0) - min) / range) * chartH;
+        return { x, y, point, index: idx };
+      });
+
+      ctx.strokeStyle = "#9db2d5";
+      ctx.beginPath();
+      ctx.moveTo(margin, margin);
+      ctx.lineTo(margin, margin + chartH);
+      ctx.lineTo(margin + chartW, margin + chartH);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#0b78f5";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      coords.forEach((item, idx) => {
+        if (idx === 0) ctx.moveTo(item.x, item.y); else ctx.lineTo(item.x, item.y);
+      });
+      ctx.stroke();
+
+      coords.forEach((item) => {
+        const hovered = item.index === hoverIndex;
+        ctx.fillStyle = hovered ? "#ff8d2f" : "#0b78f5";
+        ctx.beginPath();
+        ctx.arc(item.x, item.y, hovered ? 5 : 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      chartState.history.points = points;
+      chartState.history.coords = coords;
+      chartState.history.hoverIndex = hoverIndex;
+    }
+
+    function tooltipShow(x, y, text) {
+      tooltip.style.display = "block";
+      tooltip.style.left = `${x + 12}px`;
+      tooltip.style.top = `${y + 12}px`;
+      tooltip.textContent = text;
+    }
+
+    function tooltipHide() {
+      tooltip.style.display = "none";
+    }
+
+    function bindCharts() {
+      const priceCanvas = chartState.price.canvas;
+      priceCanvas.addEventListener("mousemove", (event) => {
+        const rect = priceCanvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) * (priceCanvas.width / rect.width);
+        const y = (event.clientY - rect.top) * (priceCanvas.height / rect.height);
+        const bar = (chartState.price.bars || []).find((item) =>
+          x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height
+        );
+        if (!bar) {
+          if (chartState.price.hoverIndex !== -1) drawPriceHistogram(chartState.price.bins, -1);
+          tooltipHide();
+          return;
+        }
+        if (bar.index !== chartState.price.hoverIndex) {
+          drawPriceHistogram(chartState.price.bins, bar.index);
+        }
+        tooltipShow(event.clientX, event.clientY, `${bar.bin.label}\nОфферов: ${bar.bin.count}`);
+      });
+      priceCanvas.addEventListener("mouseleave", () => {
+        drawPriceHistogram(chartState.price.bins || [], -1);
+        tooltipHide();
+      });
+
+      const historyCanvas = chartState.history.canvas;
+      historyCanvas.addEventListener("mousemove", (event) => {
+        const rect = historyCanvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) * (historyCanvas.width / rect.width);
+        const coords = chartState.history.coords || [];
+        if (!coords.length) {
+          tooltipHide();
+          return;
+        }
+        let nearest = null;
+        let best = Number.POSITIVE_INFINITY;
+        for (const point of coords) {
+          const d = Math.abs(point.x - x);
+          if (d < best) {
+            best = d;
+            nearest = point;
+          }
+        }
+        if (!nearest || best > 28) {
+          if (chartState.history.hoverIndex !== -1) drawHistory(chartState.history.points, -1);
+          tooltipHide();
+          return;
+        }
+        if (nearest.index !== chartState.history.hoverIndex) {
+          drawHistory(chartState.history.points, nearest.index);
+        }
+        tooltipShow(
+          event.clientX,
+          event.clientY,
+          `Дата: ${new Date(nearest.point.generated_at).toLocaleString("ru-RU")}\nОфферы: ${nearest.point.matched_offers}\nP50: ${nearest.point.p50_price ?? "—"}`
+        );
+      });
+      historyCanvas.addEventListener("mouseleave", () => {
+        drawHistory(chartState.history.points || [], -1);
+        tooltipHide();
+      });
+    }
+
+    function renderMarketplaceDetail(result) {
+      currentMarketplaceResult = result;
+      const summary = result?.summary || null;
+      if (!summary) {
+        $("marketplaceMeta").textContent = "Нет данных по площадке.";
+        return;
+      }
+
+      $("marketplaceMeta").innerHTML = `
+        <div>Площадка: <b>${escapeHtml(summary.label)}</b></div>
+        <div>Provider request_id: <b class="mono">${escapeHtml(summary.request_id)}</b></div>
+        <div>Сгенерировано: <b>${new Date(summary.generated_at).toLocaleString("ru-RU")}</b></div>
+        <div>Валидно до: <b>${new Date(summary.valid_until).toLocaleString("ru-RU")}</b></div>
+        <div>Локаль контента: <b>${escapeHtml(summary.content_locale_requested || "auto")}</b> → <b>${escapeHtml(summary.content_locale_applied || "—")}</b></div>
+      `;
+      const stats = summary.offers_stats || {};
+      const cards = [
+        ["Офферы", formatNum(stats.matched_offers)],
+        ["Продавцы", formatNum(stats.unique_sellers)],
+        ["Мин", formatMoney(stats.min_price, $("currency").value)],
+        ["Средняя", formatMoney(stats.avg_price, $("currency").value)],
+        ["P50", formatMoney(stats.p50_price, $("currency").value)],
+        ["P90", formatMoney(stats.p90_price, $("currency").value)],
+        ["Макс", formatMoney(stats.max_price, $("currency").value)],
+        ["Онлайн", formatPct(stats.online_share)],
+      ];
+      $("marketplaceKpi").innerHTML = cards.map(([n, v]) =>
+        `<div class="card"><div class="name">${escapeHtml(n)}</div><div class="value">${v}</div></div>`
+      ).join("");
+
+      const warnings = summary.warnings || [];
+      if (!warnings.length) {
+        $("marketplaceWarnings").innerHTML = "";
+      } else {
+        $("marketplaceWarnings").innerHTML =
+          `<div class="card"><div class="name">Предупреждения</div><ul class="warn-list">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul></div>`;
+      }
+
+      const raw = result?.raw?.legacy_result || {};
+      const tables = raw?.tables || {};
+      const topOffers = tables?.top_offers || [];
+      const topSellers = tables?.top_sellers || [];
+      const sections = tables?.sections || [];
+      renderTable(
+        $("topOffersTable"),
+        [
+          {
+            label: "Оффер",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(r.offer_url);
+              const text = escapeHtml(`#${r.offer_id}`);
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          {
+            label: "Продавец",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          { label: "Цена", render: (r) => formatMoney(r.price, r.currency || $("currency").value) },
+          { label: "Отзывы", render: (r) => formatNum(r.reviews_count) },
+        ],
+        topOffers
+      );
+      renderTable(
+        $("topSellersTable"),
+        [
+          {
+            label: "Продавец",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          { label: "Офферов", render: (r) => formatNum(r.offers_count) },
+          { label: "P50", render: (r) => formatMoney(r.p50_price, $("currency").value) },
+        ],
+        topSellers
+      );
+      renderTable(
+        $("sectionsTable"),
+        [
+          { label: "Раздел", render: (r) => r.section_url },
+          { label: "ID", render: (r) => r.section_id ?? "—", className: "mono" },
+          { label: "counter", render: (r) => formatNum(r.counter_total) },
+          { label: "loaded", render: (r) => formatNum(r.loaded_count) },
+          { label: "coverage", render: (r) => r.coverage_status },
+        ],
+        sections
+      );
+
+      const prices = fullOffers.map((item) => Number(item.price)).filter((v) => Number.isFinite(v));
+      drawPriceHistogram(histogramBins(prices), -1);
+      const historyPoints = raw?.charts?.history_points || [];
+      drawHistory(historyPoints, -1);
+    }
+
+    function renderOffersTable() {
+      const min = readFloat("offersPriceMin");
+      const max = readFloat("offersPriceMax");
+      const minReviews = readInt("offersMinReviews");
+      const sellerQuery = $("offersSellerQuery").value.trim().toLowerCase();
+      const onlineOnly = $("offersOnlineOnly").checked;
+      const autoOnly = $("offersAutoOnly").checked;
+      const sortMode = $("offersSort").value;
+      const pageSizeRaw = Number($("offersPageSize").value);
+      const pageSize = Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.floor(pageSizeRaw) : 40;
+      const filtered = (fullOffers || []).filter((item) => {
+        const price = Number(item.price);
+        if (min !== null && price < min) return false;
+        if (max !== null && price > max) return false;
+        const reviews = item.reviews_count === null || item.reviews_count === undefined ? 0 : Number(item.reviews_count);
+        if (minReviews !== null && reviews < minReviews) return false;
+        if (onlineOnly && item.is_online !== true) return false;
+        if (autoOnly && item.auto_delivery !== true) return false;
+        if (sellerQuery) {
+          const name = String(item.seller_name || "").toLowerCase();
+          const sid = item.seller_id === null || item.seller_id === undefined ? "" : String(item.seller_id);
+          if (!name.includes(sellerQuery) && !sid.includes(sellerQuery)) return false;
+        }
+        return true;
+      });
+
+      const sorted = [...filtered].sort((left, right) => {
+        const lPrice = Number(left.price);
+        const rPrice = Number(right.price);
+        const lReviews = Number(left.reviews_count || 0);
+        const rReviews = Number(right.reviews_count || 0);
+        const lSeller = String(left.seller_name || "").toLowerCase();
+        const rSeller = String(right.seller_name || "").toLowerCase();
+        const lOffer = Number(left.offer_id || 0);
+        const rOffer = Number(right.offer_id || 0);
+
+        if (sortMode === "price_desc") return rPrice - lPrice;
+        if (sortMode === "reviews_desc") return rReviews - lReviews;
+        if (sortMode === "seller_asc") return lSeller.localeCompare(rSeller, "ru");
+        if (sortMode === "offer_desc") return rOffer - lOffer;
+        return lPrice - rPrice;
+      });
+
+      filteredOffers = sorted;
+      const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
+      if (offersPage > pages - 1) offersPage = pages - 1;
+      const offset = offersPage * pageSize;
+      const rows = sorted.slice(offset, offset + pageSize);
+      $("offersPageMeta").textContent =
+        `Показано ${rows.length} из ${sorted.length} (страница ${offersPage + 1}/${pages}), полный срез: ${fullOffers.length}`;
+      $("offersPrevBtn").disabled = offersPage <= 0;
+      $("offersNextBtn").disabled = offersPage >= pages - 1;
+      renderTable(
+        $("offersTable"),
+        [
+          {
+            label: "Оффер",
+            className: "mono",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(r.offer_url);
+              const text = escapeHtml(`#${r.offer_id}`);
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          {
+            label: "Продавец",
+            isHtml: true,
+            render: (r) => {
+              const href = safeUrl(`https://funpay.com/users/${r.seller_id}/`);
+              const text = `${escapeHtml(r.seller_name)} (${escapeHtml(r.seller_id ?? "?")})`;
+              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+            },
+          },
+          { label: "Описание", render: (r) => r.description || "—" },
+          { label: "Цена", render: (r) => formatMoney(r.price, r.currency || $("currency").value) },
+          { label: "Отзывы", render: (r) => formatNum(r.reviews_count) },
+          { label: "Онлайн", render: (r) => (r.is_online === true ? "да" : (r.is_online === false ? "нет" : "—")) },
+          { label: "Авто", render: (r) => (r.auto_delivery === true ? "да" : (r.auto_delivery === false ? "нет" : "—")) },
+        ],
+        rows
+      );
+    }
+
+    function csvCell(value) {
+      const raw = value === null || value === undefined ? "" : String(value);
+      return `"${raw.replaceAll("\"", "\"\"")}"`;
+    }
+
+    function exportFilteredOffersCsv() {
+      const rows = Array.isArray(filteredOffers) ? filteredOffers : [];
+      if (!rows.length) {
+        setStatus("Нет данных для экспорта CSV. Сначала примените фильтры к срезу офферов.", "warn");
+        return;
+      }
+      const header = [
+        "offer_id",
+        "offer_url",
+        "seller_id",
+        "seller_name",
+        "description",
+        "price",
+        "currency",
+        "reviews_count",
+        "is_online",
+        "auto_delivery",
+      ];
+      const lines = [header.map(csvCell).join(",")];
+      for (const item of rows) {
+        lines.push([
+          item.offer_id,
+          item.offer_url,
+          item.seller_id,
+          item.seller_name,
+          item.description,
+          item.price,
+          item.currency,
+          item.reviews_count,
+          item.is_online,
+          item.auto_delivery,
+        ].map(csvCell).join(","));
+      }
+      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const runId = selectedRunId || "run";
+      link.href = URL.createObjectURL(blob);
+      link.download = `offers_${runId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      setStatus(`CSV экспортирован: ${rows.length} строк.`, "ok");
+    }
+
+    function selectMarketplaceValues() {
+      const checked = Array.from(document.querySelectorAll("input[name='marketplace']:checked"))
+        .map((item) => item.value);
+      return checked;
+    }
+
+    function buildPayload() {
+      const marketplaces = selectMarketplaceValues();
+      const payload = {
+        marketplaces,
+        common_filters: {
+          query: $("query").value.trim(),
+          currency: $("currency").value,
+          force_refresh: $("forceRefresh").checked,
+          execution: $("execution").value,
+        },
+        marketplace_filters: {},
+      };
+      if (marketplaces.includes("funpay")) {
+        payload.marketplace_filters.funpay = {
+          content_locale: $("fpContentLocale").value,
+          category_game_id: readInt("fpGame"),
+          category_id: readInt("fpSection"),
+          options: {
+            profile: $("fpProfile").value,
+            include_reviews: $("fpIncludeReviews").checked,
+            include_demand_index: $("fpIncludeDemand").checked,
+            include_fallback_scan: $("fpIncludeFallback").checked,
+            section_limit: readInt("fpSectionLimit"),
+            seller_limit: readInt("fpSellerLimit"),
+            review_pages_per_seller: readInt("fpReviewPages"),
+            history_points_limit: readInt("fpHistoryPoints"),
+          },
+          datacenter_proxies: parseLines("fpDcProxy"),
+          residential_proxies: parseLines("fpResProxy"),
+          mobile_proxies: parseLines("fpMobProxy"),
+        };
+      }
+      return payload;
+    }
+
+    function renderMarketplaceChecks() {
+      const host = $("marketplaceChecks");
+      if (!marketplacesCatalog.length) {
+        host.innerHTML = "<div class='muted'>Площадки пока не загружены.</div>";
+        return;
+      }
+      host.innerHTML = marketplacesCatalog.map((item) => {
+        const disabled = !item.enabled;
+        const checked = item.slug === "funpay" ? "checked" : "";
+        const badge = item.enabled
+          ? '<span class="badge enabled">enabled</span>'
+          : '<span class="badge disabled">disabled</span>';
+        const reason = item.reason ? `<div class="hint">${escapeHtml(item.reason)}</div>` : "";
+        return `
+          <label class="check">
+            <input type="checkbox" name="marketplace" value="${escapeHtml(item.slug)}" ${checked} ${disabled ? "disabled" : ""} />
+            <div>
+              <div><b>${escapeHtml(item.label)}</b> <span class="muted">(${escapeHtml(item.slug)})</span> ${badge}</div>
+              ${reason}
+            </div>
+          </label>
+        `;
+      }).join("");
+    }
+
+    function syncHistoryMarketplaceFilter() {
+      const select = $("historyMarketplaceFilter");
+      const current = select.value;
+      const options = ['<option value="">Все площадки</option>'];
+      for (const item of marketplacesCatalog) {
+        options.push(`<option value="${escapeHtml(item.slug)}">${escapeHtml(item.label)} (${escapeHtml(item.slug)})</option>`);
+      }
+      select.innerHTML = options.join("");
+      if ([...select.options].some((opt) => opt.value === current)) {
+        select.value = current;
+      }
+    }
+
+    function updateSectionOptions() {
+      const gameId = readInt("fpGame");
+      const options = ['<option value="">Любой раздел</option>'];
+      if (gameId !== null) {
+        const game = categoriesCatalog.find((item) => Number(item.game_section_id) === gameId);
+        if (game) {
+          for (const section of game.sections || []) {
+            options.push(`<option value="${section.section_id}">${escapeHtml(section.full_name)}</option>`);
+          }
+        }
+      } else {
+        for (const game of categoriesCatalog) {
+          for (const section of game.sections || []) {
+            options.push(`<option value="${section.section_id}">${escapeHtml(section.full_name)}</option>`);
+          }
+        }
+      }
+      $("fpSection").innerHTML = options.join("");
+    }
+
+    async function loadMarketplaces() {
+      const data = await fetchJson("/v2/marketplaces");
+      marketplacesCatalog = data.items || [];
+      renderMarketplaceChecks();
+      syncHistoryMarketplaceFilter();
+    }
+
+    async function loadCategories() {
+      const data = await fetchJson("/v2/marketplaces/funpay/categories");
+      categoriesCatalog = data.games || [];
+      const options = ['<option value="">Любая игра</option>'];
+      for (const game of categoriesCatalog) {
+        options.push(`<option value="${game.game_section_id}">${escapeHtml(game.game_name)}</option>`);
+      }
+      $("fpGame").innerHTML = options.join("");
+      updateSectionOptions();
+    }
+
+    function updateRunId(runId) {
+      if (!runId) return;
+      selectedRunId = runId;
+      runIdInput.value = runId;
+      localStorage.setItem("marketstat_v2_last_run", runId);
+      updateNavLinks();
+    }
+
+    async function renderHistory() {
+      try {
+        const data = await fetchJson("/v2/history?limit=120");
+        const items = data.items || [];
+        const queryFilter = $("historyQueryFilter").value.trim().toLowerCase();
+        const marketplaceFilter = $("historyMarketplaceFilter").value;
+        const filteredItems = items.filter((item) => {
+          const query = String(item.query || "").toLowerCase();
+          if (queryFilter && !query.includes(queryFilter)) return false;
+          if (marketplaceFilter) {
+            const marketplaces = Array.isArray(item.marketplaces) ? item.marketplaces : [];
+            if (!marketplaces.includes(marketplaceFilter)) return false;
+          }
+          return true;
+        });
+
+        $("historyCount").textContent = `Показано запусков: ${filteredItems.length} из ${items.length}`;
+        if (!filteredItems.length) {
+          historyHost.innerHTML = items.length
+            ? "<div class='muted'>По выбранным фильтрам записи не найдены.</div>"
+            : "<div class='muted'>История пока пустая.</div>";
+          return;
+        }
+        historyHost.innerHTML = filteredItems.map((item) => {
+          const runId = escapeHtml(item.run_id);
+          const marketplacesText = (item.marketplaces || [])
+            .map((slug) => marketplaceLabel(slug))
+            .join(", ");
+          const summary = `
+            <div class="summary-grid">
+              <span><b>${escapeHtml(item.query && item.query.trim() ? item.query : "пустой запрос")}</b><br/><span class="muted">${new Date(item.generated_at).toLocaleString("ru-RU")}</span></span>
+              <span>Площадки: <b>${escapeHtml(marketplacesText || "—")}</b></span>
+              <span>Офферы: <b>${formatNum(item.pooled_matched_offers)}</b></span>
+              <span>Продавцы: <b>${formatNum(item.pooled_unique_sellers)}</b></span>
+              <span>P50: <b>${formatMoney(item.pooled_p50_price, item.currency)}</b></span>
+            </div>
+          `;
+          const sub = (item.marketplace_items || []).map((subItem) => `
+            <div class="subitem">
+              <div><b>${escapeHtml(subItem.label || marketplaceLabel(subItem.marketplace))}</b> (${escapeHtml(subItem.marketplace)})</div>
+              <div>Офферы: <b>${formatNum(subItem.matched_offers)}</b>, продавцы: <b>${formatNum(subItem.unique_sellers)}</b>, P50: <b>${formatMoney(subItem.p50_price, item.currency)}</b></div>
+              <div>Demand: <b>${subItem.demand_index === null || subItem.demand_index === undefined ? "—" : Number(subItem.demand_index).toFixed(2)}</b>, предупреждений: <b>${formatNum(subItem.warnings_count)}</b></div>
+              <div class="actions" style="margin-top:6px;">
+                <a class="btn-secondary" style="text-decoration:none; display:inline-block; padding:6px 10px;" href="/analysis/${escapeHtml(subItem.marketplace)}?run_id=${runId}">Открыть площадку</a>
+              </div>
+            </div>
+          `).join("");
+          return `
+            <details class="history-item">
+              <summary>${summary}</summary>
+              <div style="padding:8px 10px;">
+                <div class="hint">run_id: <span class="mono">${runId}</span></div>
+                <div class="actions" style="margin-top:0;">
+                  <a class="btn-secondary" style="text-decoration:none; display:inline-block; padding:6px 10px;" href="/?run_id=${runId}">Открыть overview</a>
+                </div>
+                ${sub}
+              </div>
+            </details>
+          `;
+        }).join("");
+      } catch (err) {
+        historyHost.innerHTML = `<div class="status err">Ошибка истории: ${escapeHtml(String(err))}</div>`;
+      }
+    }
+
+    async function loadOverview(runId) {
+      const overview = await fetchJson(`/v2/analyze/${encodeURIComponent(runId)}/overview`);
+      renderOverview(overview);
+    }
+
+    async function loadMarketplacePage(runId, marketplace) {
+      const result = await fetchJson(`/v2/analyze/${encodeURIComponent(runId)}/marketplaces/${encodeURIComponent(marketplace)}`);
+      const offers = await fetchJson(`/v2/analyze/${encodeURIComponent(runId)}/marketplaces/${encodeURIComponent(marketplace)}/offers?limit=5000&offset=0`);
+      fullOffers = Array.isArray(offers.items) ? offers.items : [];
+      offersPage = 0;
+      renderMarketplaceDetail(result);
+      renderOffersTable();
+    }
+
+    async function loadRunStatus(runId, refreshMode = false) {
+      const envelope = await fetchJson(`/v2/analyze/${encodeURIComponent(runId)}`);
+      updateRunId(runId);
+      renderProgress(envelope);
+      if (envelope.status === "done") {
+        setStatus("Анализ завершен.", "ok");
+        clearInterval(pollTimer);
+        if (!isMarketplaceRoute) {
+          await loadOverview(runId);
+        } else if (activeMarketplace) {
+          await loadMarketplacePage(runId, activeMarketplace);
+        }
+        if (envelope.overview?.generated_at) {
+          lastUpdateChip.textContent = `Обновлено: ${new Date(envelope.overview.generated_at).toLocaleString("ru-RU")}`;
+        } else {
+          lastUpdateChip.textContent = `Обновлено: ${new Date().toLocaleString("ru-RU")}`;
+        }
+        if (!refreshMode) await renderHistory();
+      } else if (envelope.status === "failed") {
+        clearInterval(pollTimer);
+        setStatus(`Ошибка: ${envelope.error || "неизвестно"}`, "err");
+      } else {
+        const p = Number(envelope?.progress?.percent);
+        setStatus(`Статус: ${envelope.status}${Number.isFinite(p) ? ` (${p.toFixed(0)}%)` : ""}`, "warn");
+      }
+    }
+
+    function pollRun(runId) {
+      clearInterval(pollTimer);
+      let retries = 0;
+      pollTimer = setInterval(async () => {
+        retries += 1;
+        try {
+          await loadRunStatus(runId, true);
+          if (retries > 180) {
+            clearInterval(pollTimer);
+            setStatus("Опрос остановлен: превышен лимит ожидания.", "warn");
+          }
+        } catch (err) {
+          clearInterval(pollTimer);
+          setStatus(String(err), "err");
+        }
+      }, 2000);
+    }
+
+    async function runAnalyze() {
+      try {
+        const payload = buildPayload();
+        if (!payload.marketplaces.length) {
+          setStatus("Выберите хотя бы одну площадку.", "err");
+          return;
+        }
+        setStatus("Запускаю анализ...", "warn");
+        const data = await fetchJson("/v2/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        updateRunId(data.run_id);
+        renderProgress(data);
+        if (data.status === "queued" || data.status === "running") {
+          pollRun(data.run_id);
+        } else if (data.status === "done") {
+          await loadRunStatus(data.run_id);
+        } else if (data.status === "failed") {
+          setStatus(`Ошибка: ${data.error || "неизвестно"}`, "err");
+          return;
+        }
+
+        if (data.status === "done") {
+          if (payload.marketplaces.length === 1) {
+            const target = payload.marketplaces[0];
+            window.location.href = `/analysis/${encodeURIComponent(target)}?run_id=${encodeURIComponent(data.run_id)}`;
+            return;
+          }
+          window.history.replaceState({}, "", `/?run_id=${encodeURIComponent(data.run_id)}`);
+        }
+      } catch (err) {
+        setStatus(String(err), "err");
+      }
+    }
+
+    async function manualRefresh() {
+      const runId = runIdInput.value.trim();
+      if (!runId) {
+        setStatus("Укажите run_id", "err");
+        return;
+      }
+      try {
+        await loadRunStatus(runId);
+      } catch (err) {
+        setStatus(String(err), "err");
+      }
+    }
+
+    function attachEvents() {
+      $("runBtn").addEventListener("click", runAnalyze);
+      $("refreshBtn").addEventListener("click", manualRefresh);
+      $("historyRefreshBtn").addEventListener("click", renderHistory);
+      $("historyQueryFilter").addEventListener("input", renderHistory);
+      $("historyMarketplaceFilter").addEventListener("change", renderHistory);
+      runIdInput.addEventListener("input", updateNavLinks);
+      $("copyRunIdBtn").addEventListener("click", async () => {
+        const runId = runIdInput.value.trim() || selectedRunId || "";
+        if (!runId) {
+          setStatus("Сначала укажите run_id.", "warn");
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(runId);
+          setStatus("run_id скопирован в буфер обмена.", "ok");
+        } catch (_) {
+          runIdInput.select();
+          document.execCommand("copy");
+          setStatus("run_id скопирован в буфер обмена.", "ok");
+        }
+      });
+      $("fpGame").addEventListener("change", updateSectionOptions);
+      $("fpIncludeDemand").addEventListener("change", (event) => {
+        if (event.target.checked) $("fpIncludeReviews").checked = true;
+      });
+      $("applyOfferFiltersBtn").addEventListener("click", () => {
+        offersPage = 0;
+        renderOffersTable();
+      });
+      $("offersSort").addEventListener("change", () => {
+        offersPage = 0;
+        renderOffersTable();
+      });
+      $("offersPageSize").addEventListener("change", () => {
+        offersPage = 0;
+        renderOffersTable();
+      });
+      $("resetOfferFiltersBtn").addEventListener("click", () => {
+        $("offersPriceMin").value = "";
+        $("offersPriceMax").value = "";
+        $("offersMinReviews").value = "";
+        $("offersSellerQuery").value = "";
+        $("offersOnlineOnly").checked = false;
+        $("offersAutoOnly").checked = false;
+        $("offersSort").value = "price_asc";
+        $("offersPageSize").value = "40";
+        offersPage = 0;
+        renderOffersTable();
+      });
+      $("exportOffersCsvBtn").addEventListener("click", exportFilteredOffersCsv);
+      $("offersPrevBtn").addEventListener("click", () => {
+        if (offersPage > 0) {
+          offersPage -= 1;
+          renderOffersTable();
+        }
+      });
+      $("offersNextBtn").addEventListener("click", () => {
+        const pageSizeRaw = Number($("offersPageSize").value);
+        const pageSize = Number.isFinite(pageSizeRaw) && pageSizeRaw > 0 ? Math.floor(pageSizeRaw) : 40;
+        const filteredCount = (filteredOffers || []).length;
+        const maxPage = Math.max(0, Math.ceil(filteredCount / pageSize) - 1);
+        if (offersPage < maxPage) {
+          offersPage += 1;
+          renderOffersTable();
+        }
+      });
+      bindCharts();
+    }
+
+    async function bootstrap() {
+      routeVisibility();
+      attachEvents();
+      try {
+        const urlRunId = new URLSearchParams(window.location.search).get("run_id");
+        const savedRunId = localStorage.getItem("marketstat_v2_last_run");
+        selectedRunId = urlRunId || savedRunId || null;
+        if (selectedRunId) runIdInput.value = selectedRunId;
+        updateNavLinks();
+
+        await loadMarketplaces();
+        await loadCategories();
+        await renderHistory();
+
+        if (selectedRunId) {
+          await loadRunStatus(selectedRunId);
+        } else {
+          setStatus("Готово к запуску нового анализа.", "ok");
+        }
+      } catch (err) {
+        setStatus(String(err), "err");
+      }
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>
