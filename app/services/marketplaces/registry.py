@@ -8,6 +8,7 @@ from app.core.config import Settings
 from app.schemas.v2 import MarketplaceCatalogItemDTO, MarketplaceSlug
 from app.services.marketplaces.funpay_provider import FunPayProvider
 from app.services.marketplaces.playerok_provider import PlayerOkProvider
+from app.services.marketplaces.platimarket_provider import PlatiMarketProvider
 
 
 @dataclass(frozen=True)
@@ -30,9 +31,8 @@ class MarketplaceRegistry:
         ),
         MarketplaceInfo(
             slug=MarketplaceSlug.platimarket,
-            label="PlatiMarket",
-            enabled=False,
-            reason="Скоро: провайдер еще не реализован",
+            label="Plati.Market",
+            enabled=True,
         ),
     )
 
@@ -62,6 +62,8 @@ class MarketplaceRegistry:
             return FunPayProvider(db=self.db, settings=self.settings)
         if slug == MarketplaceSlug.playerok:
             return PlayerOkProvider(db=self.db, settings=self.settings)
+        if slug == MarketplaceSlug.platimarket:
+            return PlatiMarketProvider(db=self.db, settings=self.settings)
         raise ValueError(f"marketplace_not_available:{slug.value}:Провайдер не реализован")
 
     @classmethod

@@ -32,6 +32,7 @@ from app.schemas.v2 import (
 )
 from app.services.i18n import tr
 from app.services.marketplaces.base import MarketplaceProvider
+from app.services.network_settings import NetworkSettingsService
 from app.services.playerok_client import (
     PlayerOkCategorySection,
     PlayerOkClient,
@@ -119,6 +120,7 @@ class PlayerOkProvider(MarketplaceProvider):
     def __init__(self, db: Session, settings: Settings) -> None:
         self.db = db
         self.settings = settings
+        self.network_settings = NetworkSettingsService(db=db, settings=settings)
 
     @staticmethod
     def _to_marketplace_filters(raw_filters: dict | None) -> dict:
@@ -164,15 +166,14 @@ class PlayerOkProvider(MarketplaceProvider):
             return {}
         return {key: "***" for key in sorted(data)}
 
-    @staticmethod
-    def _pick_proxy_list(filters: dict, common_filters: CommonFiltersDTO, key: str) -> list[str] | None:
-        raw_value = filters.get(key)
-        if isinstance(raw_value, list) and raw_value:
-            return raw_value
-        common_value = getattr(common_filters, key, None)
-        if isinstance(common_value, list) and common_value:
-            return common_value
-        return None
+    def _resolve_proxy_pool(self, filters: dict, common_filters: CommonFiltersDTO):
+        resolved = self.network_settings.resolve(
+            common_filters=common_filters,
+            marketplace_filters=filters,
+        )
+        allow_direct = bool(common_filters.allow_direct_fallback)
+        self.network_settings.ensure_proxy_policy(resolved, allow_direct_fallback=allow_direct)
+        return resolved, allow_direct
 
     def _build_client(
         self,
@@ -183,20 +184,16 @@ class PlayerOkProvider(MarketplaceProvider):
         advanced_cookies: dict[str, str],
         use_html_degrade: bool,
     ) -> PlayerOkClient:
+        resolved, allow_direct = self._resolve_proxy_pool(filters, common_filters)
         return PlayerOkClient(
             settings=self.settings,
-            datacenter_proxies=normalize_proxy_list(
-                self._pick_proxy_list(filters, common_filters, "datacenter_proxies")
-            ),
-            residential_proxies=normalize_proxy_list(
-                self._pick_proxy_list(filters, common_filters, "residential_proxies")
-            ),
-            mobile_proxies=normalize_proxy_list(
-                self._pick_proxy_list(filters, common_filters, "mobile_proxies")
-            ),
+            datacenter_proxies=normalize_proxy_list(resolved.datacenter),
+            residential_proxies=normalize_proxy_list(resolved.residential),
+            mobile_proxies=normalize_proxy_list(resolved.mobile),
             advanced_headers=advanced_headers,
             advanced_cookies=advanced_cookies,
             use_html_degrade=use_html_degrade,
+            allow_direct_fallback=allow_direct,
         )
 
     def _resolve_options(
@@ -1296,22 +1293,41 @@ class PlayerOkProvider(MarketplaceProvider):
             items=items,
         )
 
-    def categories(self, game_slug: str | None = None) -> list[PlayerOkCategoryGameDTO]:
+    def categories(
+        self,
+        game_slug: str | None = None,
+        *,
+        common_filters: CommonFiltersDTO | None = None,
+        force_refresh: bool = False,
+        with_source: bool = False,
+    ) -> list[PlayerOkCategoryGameDTO] | tuple[list[PlayerOkCategoryGameDTO], str]:
+        filters = common_filters or CommonFiltersDTO()
         now = datetime.now(UTC)
         cache_items = type(self)._categories_cache
         cache_expires_at = type(self)._categories_cache_expires_at
         if (
             game_slug is None
+            and not force_refresh
             and cache_items is not None
             and cache_expires_at is not None
             and cache_expires_at > now
         ):
-            return [
+            cached = [
                 PlayerOkCategoryGameDTO.model_validate(item.model_dump(mode="json"))
                 for item in cache_items
             ]
+            if with_source:
+                return cached, "cache"
+            return cached
 
-        client = PlayerOkClient(settings=self.settings)
+        resolved, allow_direct = self._resolve_proxy_pool({}, filters)
+        client = PlayerOkClient(
+            settings=self.settings,
+            datacenter_proxies=normalize_proxy_list(resolved.datacenter),
+            residential_proxies=normalize_proxy_list(resolved.residential),
+            mobile_proxies=normalize_proxy_list(resolved.mobile),
+            allow_direct_fallback=allow_direct,
+        )
         games = client.get_categories_catalog(game_slug=game_slug)
         result = [
             PlayerOkCategoryGameDTO(
@@ -1339,4 +1355,6 @@ class PlayerOkProvider(MarketplaceProvider):
                 for item in result
             ]
             type(self)._categories_cache_expires_at = now + timedelta(hours=self.settings.cache_ttl_hours)
+        if with_source:
+            return result, "network"
         return result

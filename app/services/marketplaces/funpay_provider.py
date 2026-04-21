@@ -25,6 +25,7 @@ from app.schemas.v2 import (
 from app.services.analyzer import AnalyzerService
 from app.services.funpay_client import FunPayClient
 from app.services.marketplaces.base import MarketplaceProvider
+from app.services.network_settings import NetworkSettingsService
 from app.services.proxy_utils import normalize_proxy_list
 from app.services.text_utils import normalize_text
 
@@ -36,6 +37,7 @@ class FunPayProvider(MarketplaceProvider):
     def __init__(self, db: Session, settings: Settings) -> None:
         self.db = db
         self.settings = settings
+        self.network_settings = NetworkSettingsService(db=db, settings=settings)
 
     @staticmethod
     def _to_marketplace_filters(raw_filters: dict | None) -> dict:
@@ -43,31 +45,34 @@ class FunPayProvider(MarketplaceProvider):
             return {}
         return raw_filters
 
-    @staticmethod
-    def _pick_proxy_list(filters: dict, common_filters: CommonFiltersDTO, key: str) -> list[str] | None:
-        raw_value = filters.get(key)
-        if isinstance(raw_value, list) and raw_value:
-            return raw_value
-        common_value = getattr(common_filters, key, None)
-        if isinstance(common_value, list) and common_value:
-            return common_value
-        return None
+    def _resolve_proxy_pool(self, filters: dict, common_filters: CommonFiltersDTO):
+        resolved = self.network_settings.resolve(
+            common_filters=common_filters,
+            marketplace_filters=filters,
+        )
+        allow_direct = bool(common_filters.allow_direct_fallback)
+        self.network_settings.ensure_proxy_policy(resolved, allow_direct_fallback=allow_direct)
+        return resolved, allow_direct
 
     def _build_client(self, filters: dict, common_filters: CommonFiltersDTO) -> FunPayClient:
+        resolved, allow_direct = self._resolve_proxy_pool(filters, common_filters)
         return FunPayClient(
             settings=self.settings,
-            datacenter_proxies=normalize_proxy_list(
-                self._pick_proxy_list(filters, common_filters, "datacenter_proxies")
-            ),
-            residential_proxies=normalize_proxy_list(
-                self._pick_proxy_list(filters, common_filters, "residential_proxies")
-            ),
-            mobile_proxies=normalize_proxy_list(
-                self._pick_proxy_list(filters, common_filters, "mobile_proxies")
-            ),
+            datacenter_proxies=normalize_proxy_list(resolved.datacenter),
+            residential_proxies=normalize_proxy_list(resolved.residential),
+            mobile_proxies=normalize_proxy_list(resolved.mobile),
+            allow_direct_fallback=allow_direct,
         )
 
-    def _build_legacy_request(self, common_filters: CommonFiltersDTO, filters: dict) -> AnalyzeRequestDTO:
+    def _build_legacy_request(
+        self,
+        common_filters: CommonFiltersDTO,
+        filters: dict,
+        *,
+        datacenter_proxies: list[str],
+        residential_proxies: list[str],
+        mobile_proxies: list[str],
+    ) -> AnalyzeRequestDTO:
         return AnalyzeRequestDTO(
             query=common_filters.query,
             force_refresh=common_filters.force_refresh,
@@ -78,9 +83,9 @@ class FunPayProvider(MarketplaceProvider):
             category_id=filters.get("category_id"),
             category_ids=filters.get("category_ids") or [],
             options=filters.get("options", {}),
-            datacenter_proxies=self._pick_proxy_list(filters, common_filters, "datacenter_proxies"),
-            residential_proxies=self._pick_proxy_list(filters, common_filters, "residential_proxies"),
-            mobile_proxies=self._pick_proxy_list(filters, common_filters, "mobile_proxies"),
+            datacenter_proxies=datacenter_proxies,
+            residential_proxies=residential_proxies,
+            mobile_proxies=mobile_proxies,
         )
 
     @staticmethod
@@ -183,7 +188,14 @@ class FunPayProvider(MarketplaceProvider):
         filters = self._to_marketplace_filters(marketplace_filters)
         client = self._build_client(filters, common_filters)
         analyzer = AnalyzerService(db=self.db, client=client, settings=self.settings)
-        legacy_request = self._build_legacy_request(common_filters, filters)
+        resolved, _ = self._resolve_proxy_pool(filters, common_filters)
+        legacy_request = self._build_legacy_request(
+            common_filters,
+            filters,
+            datacenter_proxies=resolved.datacenter,
+            residential_proxies=resolved.residential,
+            mobile_proxies=resolved.mobile,
+        )
         legacy_envelope = analyzer.analyze(legacy_request)
         if legacy_envelope.result is None:
             raise RuntimeError("FunPay анализ завершился без результата")
@@ -372,8 +384,16 @@ class FunPayProvider(MarketplaceProvider):
             items=sliced,
         )
 
-    def categories(self) -> list[CategoryGameDTO]:
-        client = FunPayClient(settings=self.settings)
+    def categories(self, *, common_filters: CommonFiltersDTO | None = None) -> list[CategoryGameDTO]:
+        filters = common_filters or CommonFiltersDTO()
+        resolved, allow_direct = self._resolve_proxy_pool({}, filters)
+        client = FunPayClient(
+            settings=self.settings,
+            datacenter_proxies=normalize_proxy_list(resolved.datacenter),
+            residential_proxies=normalize_proxy_list(resolved.residential),
+            mobile_proxies=normalize_proxy_list(resolved.mobile),
+            allow_direct_fallback=allow_direct,
+        )
         games = client.get_categories_catalog()
         return [
             CategoryGameDTO(

@@ -9,7 +9,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "validation.empty_query_requires_scope": (
             "Для пустого запроса укажите область сканирования: "
             "для FunPay выберите category_game_id/category_id/category_ids, "
-            "для PlayerOK — category_game_slug/category_slugs."
+            "для PlayerOK — category_game_slug/category_slugs, "
+            "для Plati.Market — category_game_id/category_group_id/category_ids."
         ),
         "progress.global.validate": "Проверяю доступность выбранных площадок.",
         "progress.global.start": "Запускаю анализ площадок: {marketplaces}.",
@@ -91,12 +92,21 @@ MESSAGES: dict[str, dict[str, str]] = {
         "warning.playerok.graphql_failed_count": (
             "GraphQL дал ошибки в {count} местах; проверьте прокси/заголовки."
         ),
+        "warning.plati.group_not_found": "Выбранная группа Plati.Market не найдена в каталоге.",
+        "warning.plati.game_not_found": "Выбранная игра Plati.Market не найдена в каталоге.",
+        "warning.plati.game_categories_not_found": "Часть выбранных категорий выбранной игры не найдена.",
+        "warning.plati.sections_not_found": "Часть выбранных разделов Plati.Market не найдена в каталоге.",
+        "warning.plati.section_failed": "Не удалось обработать раздел Plati.Market: {section}.",
+        "warning.plati.sections_failed_count": "Сбор завершился с ошибками по разделам Plati.Market: {count}.",
+        "warning.plati.game_failed": "Не удалось обработать игру Plati.Market: {game}.",
+        "warning.plati.games_failed_count": "Сбор завершился с ошибками по играм Plati.Market: {count}.",
     },
     "en": {
         "validation.empty_query_requires_scope": (
             "For an empty query you must provide scan scope: "
             "FunPay requires category_game_id/category_id/category_ids, "
-            "PlayerOK requires category_game_slug/category_slugs."
+            "PlayerOK requires category_game_slug/category_slugs, "
+            "Plati.Market requires category_game_id/category_group_id/category_ids."
         ),
         "progress.global.validate": "Checking selected marketplace availability.",
         "progress.global.start": "Starting marketplace analysis: {marketplaces}.",
@@ -175,6 +185,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "warning.playerok.graphql_failed_count": (
             "GraphQL failed in {count} places; check proxies/headers."
         ),
+        "warning.plati.group_not_found": "Selected Plati.Market group was not found in catalog.",
+        "warning.plati.game_not_found": "Selected Plati.Market game was not found in catalog.",
+        "warning.plati.game_categories_not_found": "Some selected categories for the chosen game were not found.",
+        "warning.plati.sections_not_found": "Some selected Plati.Market sections were not found in catalog.",
+        "warning.plati.section_failed": "Failed to process Plati.Market section: {section}.",
+        "warning.plati.sections_failed_count": "Plati.Market section parsing failed for {count} sections.",
+        "warning.plati.game_failed": "Failed to process Plati.Market game: {game}.",
+        "warning.plati.games_failed_count": "Plati.Market game parsing failed for {count} games.",
     },
 }
 

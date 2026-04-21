@@ -11,20 +11,30 @@ class ProxySelection:
     proxy_url: str | None
 
 
+class ProxyRequiredError(RuntimeError):
+    pass
+
+
 class ProxyPool:
     def __init__(
         self,
         datacenter_proxies: str = "",
         residential_proxies: str = "",
         mobile_proxies: str = "",
+        *,
+        allow_direct_fallback: bool = True,
     ) -> None:
         self.datacenter = _parse_proxy_list(datacenter_proxies)
         self.residential = _parse_proxy_list(residential_proxies)
         self.mobile = _parse_proxy_list(mobile_proxies)
+        self.allow_direct_fallback = allow_direct_fallback
 
         self._idx_dc = 0
         self._idx_res = 0
         self._idx_mob = 0
+
+    def has_any_proxy(self) -> bool:
+        return bool(self.datacenter or self.residential or self.mobile)
 
     def _pick_round_robin(self, items: list[str], idx_attr: str) -> str | None:
         if not items:
@@ -54,5 +64,6 @@ class ProxyPool:
             return ProxySelection(tier="datacenter", proxy_url=proxy)
 
         # fallback без прокси, если пул пуст.
+        if not self.allow_direct_fallback:
+            raise ProxyRequiredError("proxy_required")
         return ProxySelection(tier="none", proxy_url=None)
-

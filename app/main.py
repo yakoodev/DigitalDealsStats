@@ -6,6 +6,7 @@ from app.api.routes import v2_router, web_router
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
+from app.models import entities as _entities  # noqa: F401
 from app.services.analyzer import AnalyzerService
 from app.services.funpay_client import FunPayClient
 

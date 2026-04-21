@@ -26,6 +26,7 @@ class CommonFiltersDTO(BaseModel):
     currency: Currency = Currency.rub
     ui_locale: UiLocale = UiLocale.ru
     force_refresh: bool = False
+    allow_direct_fallback: bool = False
     execution: V2ExecutionMode = V2ExecutionMode.auto
     datacenter_proxies: list[str] | None = None
     residential_proxies: list[str] | None = None
@@ -56,9 +57,25 @@ class PlayerOkFiltersDTO(BaseModel):
     mobile_proxies: list[str] | None = None
 
 
+class PlatiMarketFiltersDTO(BaseModel):
+    category_game_id: int | None = Field(default=None, ge=1)
+    category_game_slug: str | None = None
+    category_game_name: str | None = None
+    game_category_ids: list[int] = Field(default_factory=list)
+    category_group_id: int | None = Field(default=None, ge=1)
+    category_ids: list[int] = Field(default_factory=list)
+    use_game_scope: bool = True
+    use_group_scope: bool = True
+    options: AnalyzeOptionsDTO = Field(default_factory=AnalyzeOptionsDTO)
+    datacenter_proxies: list[str] | None = None
+    residential_proxies: list[str] | None = None
+    mobile_proxies: list[str] | None = None
+
+
 class MarketplaceFiltersDTO(BaseModel):
     funpay: FunPayFiltersDTO | None = None
     playerok: PlayerOkFiltersDTO | None = None
+    platimarket: PlatiMarketFiltersDTO | None = None
 
 
 class AnalyzeV2RequestDTO(BaseModel):
@@ -94,6 +111,9 @@ class NormalizedOfferDTO(BaseModel):
     reviews_count: int | None = None
     is_online: bool | None = None
     auto_delivery: bool | None = None
+    sold_count: int | None = None
+    sold_text: str | None = None
+    sold_is_lower_bound: bool | None = None
 
 
 class NormalizedSellerDTO(BaseModel):
@@ -140,6 +160,10 @@ class DemandStatsV2DTO(BaseModel):
     estimated_purchases_30d: int = 0
     sellers_analyzed: int = 0
     reviews_scanned: int = 0
+    purchases_from_sold_total: int = 0
+    purchases_from_reviews_total: int = 0
+    purchases_from_reviews_30d: int = 0
+    purchases_total_is_lower_bound: bool = False
 
 
 class CoverageV2DTO(BaseModel):
@@ -164,6 +188,12 @@ class MarketplaceSummaryDTO(BaseModel):
     category_ids: list[int] = Field(default_factory=list)
     category_game_slug: str | None = None
     category_slugs: list[str] = Field(default_factory=list)
+    platimarket_game_id: int | None = None
+    platimarket_game_slug: str | None = None
+    platimarket_game_name: str | None = None
+    platimarket_game_category_ids: list[int] = Field(default_factory=list)
+    platimarket_group_id: int | None = None
+    platimarket_category_ids: list[int] = Field(default_factory=list)
     offers_stats: OffersStatsV2DTO
     coverage: CoverageV2DTO
     demand: DemandStatsV2DTO | None = None
@@ -258,6 +288,12 @@ class HistoryRunItemDTO(BaseModel):
     category_ids: list[int] = Field(default_factory=list)
     category_game_slug: str | None = None
     category_slugs: list[str] = Field(default_factory=list)
+    platimarket_game_id: int | None = None
+    platimarket_game_slug: str | None = None
+    platimarket_game_name: str | None = None
+    platimarket_game_category_ids: list[int] = Field(default_factory=list)
+    platimarket_group_id: int | None = None
+    platimarket_category_ids: list[int] = Field(default_factory=list)
     pooled_matched_offers: int = 0
     pooled_unique_sellers: int = 0
     pooled_p50_price: float | None = None
@@ -288,4 +324,82 @@ class PlayerOkCategoryGameDTO(BaseModel):
 
 class PlayerOkCategoriesResponseDTO(BaseModel):
     generated_at: datetime
+    source: str = "network"
     games: list[PlayerOkCategoryGameDTO]
+
+
+class PlatiCategorySectionDTO(BaseModel):
+    section_id: int
+    section_slug: str
+    section_url: str
+    section_name: str
+    full_name: str
+    counter_total: int | None = None
+    group_id: int | None = None
+
+
+class PlatiCategoryGroupDTO(BaseModel):
+    group_id: int
+    group_slug: str
+    group_url: str
+    group_name: str
+    sections: list[PlatiCategorySectionDTO]
+
+
+class PlatiCategoriesResponseDTO(BaseModel):
+    generated_at: datetime
+    source: str = "network"
+    groups: list[PlatiCategoryGroupDTO]
+
+
+class PlatiGameDTO(BaseModel):
+    game_id: int
+    game_slug: str
+    game_url: str
+    game_name: str
+
+
+class PlatiGameCategoryDTO(BaseModel):
+    category_id: int
+    category_name: str
+    offers_count: int | None = None
+
+
+class PlatiGamesResponseDTO(BaseModel):
+    generated_at: datetime
+    source: str = "network"
+    games: list[PlatiGameDTO]
+
+
+class PlatiGameCategoriesResponseDTO(BaseModel):
+    generated_at: datetime
+    source: str = "network"
+    game_id: int | None = None
+    game_slug: str | None = None
+    categories: list[PlatiGameCategoryDTO]
+
+
+class PlatiCatalogTreeNodeDTO(BaseModel):
+    section_id: int
+    section_slug: str
+    title: str
+    cnt: int | None = None
+    path: list[str] = Field(default_factory=list)
+    url: str
+    children: list["PlatiCatalogTreeNodeDTO"] = Field(default_factory=list)
+
+
+class PlatiCatalogTreeResponseDTO(BaseModel):
+    generated_at: datetime
+    source: str = "network"
+    nodes: list[PlatiCatalogTreeNodeDTO] = Field(default_factory=list)
+
+
+class NetworkSettingsDTO(BaseModel):
+    datacenter_proxies: list[str] = Field(default_factory=list)
+    residential_proxies: list[str] = Field(default_factory=list)
+    mobile_proxies: list[str] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+PlatiCatalogTreeNodeDTO.model_rebuild()

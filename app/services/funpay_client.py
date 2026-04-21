@@ -79,6 +79,7 @@ class FunPayClient:
         datacenter_proxies: str | None = None,
         residential_proxies: str | None = None,
         mobile_proxies: str | None = None,
+        allow_direct_fallback: bool = True,
     ) -> None:
         self.settings = settings
         self.proxy_pool = ProxyPool(
@@ -89,6 +90,7 @@ class FunPayClient:
                 settings.residential_proxies if residential_proxies is None else residential_proxies
             ),
             mobile_proxies=(settings.mobile_proxies if mobile_proxies is None else mobile_proxies),
+            allow_direct_fallback=allow_direct_fallback,
         )
         self._cookies = httpx.Cookies()
         self._http = RetryHttpClient(

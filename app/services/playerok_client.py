@@ -293,6 +293,7 @@ class PlayerOkClient:
         advanced_headers: dict[str, str] | None = None,
         advanced_cookies: dict[str, str] | None = None,
         use_html_degrade: bool = True,
+        allow_direct_fallback: bool = True,
     ) -> None:
         self.settings = settings
         self.use_html_degrade = use_html_degrade
@@ -302,6 +303,7 @@ class PlayerOkClient:
                 settings.residential_proxies if residential_proxies is None else residential_proxies
             ),
             mobile_proxies=settings.mobile_proxies if mobile_proxies is None else mobile_proxies,
+            allow_direct_fallback=allow_direct_fallback,
         )
 
         default_headers = {

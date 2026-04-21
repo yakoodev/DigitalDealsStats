@@ -120,6 +120,20 @@ class ReviewSnapshot(Base):
     is_relevant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
+class RuntimeNetworkSettings(Base):
+    __tablename__ = "runtime_network_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    datacenter_proxies: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    residential_proxies: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    mobile_proxies: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 Index("ix_offer_snapshots_request_offer", OfferSnapshot.request_id, OfferSnapshot.offer_id)
 Index("ix_review_snapshots_request_seller", ReviewSnapshot.request_id, ReviewSnapshot.seller_id)
 Index(

@@ -28,6 +28,7 @@ from app.schemas.v2 import (
     ProgressV2DTO,
 )
 from app.services.i18n import tr
+from app.services.network_settings import NetworkSettingsService, mask_proxy_payload
 from app.services.marketplaces.registry import MarketplaceRegistry
 from app.services.text_utils import repair_mojibake_cyrillic
 
@@ -39,6 +40,7 @@ class GlobalAnalyzerService:
         self.db = db
         self.settings = settings
         self.registry = MarketplaceRegistry(db=db, settings=settings)
+        self.network_settings = NetworkSettingsService(db=db, settings=settings)
 
     @staticmethod
     def _utc_now() -> datetime:
@@ -248,11 +250,13 @@ class GlobalAnalyzerService:
 
         query = payload.common_filters.query
         currency = payload.common_filters.currency.value
+        common_filters_payload = payload.common_filters.model_dump(mode="json")
+        mask_proxy_payload(common_filters_payload)
         marketplace_filters_payload = payload.marketplace_filters.model_dump(mode="json")
         self._mask_sensitive_marketplace_filters(marketplace_filters_payload)
         request_filters_payload = {
             "marketplaces": [item.value for item in payload.marketplaces],
-            "common_filters": payload.common_filters.model_dump(mode="json"),
+            "common_filters": common_filters_payload,
             "marketplace_filters": marketplace_filters_payload,
         }
         if row is None:
@@ -310,6 +314,10 @@ class GlobalAnalyzerService:
     def _mask_sensitive_marketplace_filters(cls, payload: dict) -> None:
         if not isinstance(payload, dict):
             return
+        for section_key in ("funpay", "playerok", "platimarket"):
+            section = payload.get(section_key)
+            if isinstance(section, dict):
+                mask_proxy_payload(section)
         playerok = payload.get("playerok")
         if not isinstance(playerok, dict):
             return
@@ -732,6 +740,11 @@ class GlobalAnalyzerService:
                 if isinstance(marketplace_filters, dict)
                 else None
             )
+            platimarket_filters = (
+                marketplace_filters.get("platimarket")
+                if isinstance(marketplace_filters, dict)
+                else None
+            )
             try:
                 overview = OverviewV2DTO.model_validate(overview_raw)
             except Exception:  # noqa: BLE001
@@ -796,6 +809,44 @@ class GlobalAnalyzerService:
                         if isinstance(playerok_filters, dict)
                         else []
                     ),
+                    platimarket_game_id=(
+                        platimarket_filters.get("category_game_id")
+                        if isinstance(platimarket_filters, dict)
+                        else None
+                    ),
+                    platimarket_game_slug=(
+                        platimarket_filters.get("category_game_slug")
+                        if isinstance(platimarket_filters, dict)
+                        else None
+                    ),
+                    platimarket_game_name=(
+                        platimarket_filters.get("category_game_name")
+                        if isinstance(platimarket_filters, dict)
+                        else None
+                    ),
+                    platimarket_game_category_ids=(
+                        [
+                            int(item)
+                            for item in (platimarket_filters.get("game_category_ids") or [])
+                            if str(item).isdigit()
+                        ]
+                        if isinstance(platimarket_filters, dict)
+                        else []
+                    ),
+                    platimarket_group_id=(
+                        platimarket_filters.get("category_group_id")
+                        if isinstance(platimarket_filters, dict)
+                        else None
+                    ),
+                    platimarket_category_ids=(
+                        [
+                            int(item)
+                            for item in (platimarket_filters.get("category_ids") or [])
+                            if str(item).isdigit()
+                        ]
+                        if isinstance(platimarket_filters, dict)
+                        else []
+                    ),
                     pooled_matched_offers=overview.pooled_offers_stats.matched_offers,
                     pooled_unique_sellers=overview.pooled_offers_stats.unique_sellers,
                     pooled_p50_price=overview.pooled_offers_stats.p50_price,
@@ -804,10 +855,82 @@ class GlobalAnalyzerService:
             )
         return HistoryV2ResponseDTO(generated_at=self._utc_now(), items=items)
 
-    def funpay_categories(self):
+    def funpay_categories(self, *, allow_direct_fallback: bool = False):
         provider = self.registry.provider_for(MarketplaceSlug.funpay)
-        return provider.categories()
+        filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback)
+        return provider.categories(common_filters=filters)
 
-    def playerok_categories(self, game_slug: str | None = None):
+    def playerok_categories(
+        self,
+        *,
+        game_slug: str | None = None,
+        allow_direct_fallback: bool = False,
+        force_refresh: bool = False,
+    ):
         provider = self.registry.provider_for(MarketplaceSlug.playerok)
-        return provider.categories(game_slug=game_slug)
+        filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
+        return provider.categories(
+            game_slug=game_slug,
+            common_filters=filters,
+            force_refresh=force_refresh,
+            with_source=True,
+        )
+
+    def platimarket_categories(
+        self,
+        *,
+        allow_direct_fallback: bool = False,
+        force_refresh: bool = False,
+    ):
+        provider = self.registry.provider_for(MarketplaceSlug.platimarket)
+        filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
+        return provider.categories(common_filters=filters, force_refresh=force_refresh, with_source=True)
+
+    def platimarket_catalog_tree(
+        self,
+        *,
+        allow_direct_fallback: bool = False,
+        force_refresh: bool = False,
+    ):
+        provider = self.registry.provider_for(MarketplaceSlug.platimarket)
+        filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
+        return provider.catalog_tree(common_filters=filters, force_refresh=force_refresh, with_source=True)
+
+    def platimarket_games(
+        self,
+        *,
+        allow_direct_fallback: bool = False,
+        force_refresh: bool = False,
+    ):
+        provider = self.registry.provider_for(MarketplaceSlug.platimarket)
+        filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
+        return provider.games(common_filters=filters, force_refresh=force_refresh, with_source=True)
+
+    def platimarket_game_categories(
+        self,
+        *,
+        game_id: int | None = None,
+        game_slug: str | None = None,
+        ui_locale: str = "ru",
+        allow_direct_fallback: bool = False,
+        force_refresh: bool = False,
+    ):
+        provider = self.registry.provider_for(MarketplaceSlug.platimarket)
+        filters = CommonFiltersDTO(
+            ui_locale=ui_locale,
+            allow_direct_fallback=allow_direct_fallback,
+            force_refresh=force_refresh,
+        )
+        return provider.game_categories(
+            game_id=game_id,
+            game_slug=game_slug,
+            ui_locale=ui_locale,
+            common_filters=filters,
+            force_refresh=force_refresh,
+        )
+
+    def get_network_settings(self):
+        return self.network_settings.get()
+
+    def update_network_settings(self, payload):
+        return self.network_settings.update(payload)

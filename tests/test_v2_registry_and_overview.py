@@ -15,13 +15,13 @@ from app.services.global_analyzer import GlobalAnalyzerService
 from app.services.marketplaces.registry import MarketplaceRegistry
 
 
-def test_registry_contains_disabled_marketplaces() -> None:
+def test_registry_contains_marketplaces() -> None:
     items = MarketplaceRegistry.catalog_dto()
     slugs = {item.slug.value: item for item in items}
     assert "funpay" in slugs and slugs["funpay"].enabled is True
     assert "playerok" in slugs and slugs["playerok"].enabled is True
     assert "ggsell" in slugs and slugs["ggsell"].enabled is False
-    assert "platimarket" in slugs and slugs["platimarket"].enabled is False
+    assert "platimarket" in slugs and slugs["platimarket"].enabled is True
 
 
 def _mk_result(prices: list[float], matched: int, sellers: int, p50: float | None) -> MarketplaceRunResultDTO:

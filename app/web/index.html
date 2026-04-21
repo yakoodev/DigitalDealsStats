@@ -182,6 +182,42 @@
     .section-item .hint {
       margin-top: 2px;
     }
+    .tree-host {
+      display: block;
+      padding: 6px 8px;
+    }
+    .tree-node {
+      margin: 0 0 6px;
+      border: 1px solid #dce8fb;
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 4px 6px;
+    }
+    .tree-row {
+      display: flex;
+      align-items: start;
+      gap: 8px;
+    }
+    .tree-node details > summary {
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .tree-node details > summary::-webkit-details-marker { display: none; }
+    .tree-node .tree-children {
+      margin-left: 18px;
+      margin-top: 6px;
+      display: grid;
+      gap: 6px;
+    }
+    .tree-meta {
+      margin-top: 1px;
+      font-size: 12px;
+      color: var(--muted);
+    }
     .actions {
       display: flex;
       gap: 8px;
@@ -472,6 +508,24 @@
       border-bottom: 1px dashed #89a6d5;
       text-decoration: none;
     }
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(10, 20, 40, 0.42);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-content {
+      width: min(520px, 100%);
+      border-radius: 14px;
+      background: #fff;
+      border: 1px solid #dbe6f8;
+      box-shadow: 0 20px 48px rgba(12, 28, 52, 0.24);
+      padding: 14px 14px 12px;
+    }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -492,6 +546,7 @@
           <a id="navOverview" href="/">Общий анализ</a>
           <a id="navFunPay" href="/analysis/funpay">FunPay</a>
           <a id="navPlayerOk" href="/analysis/playerok">PlayerOK</a>
+          <a id="navPlati" href="/analysis/platimarket">Plati.Market</a>
         </nav>
       </div>
     </div>
@@ -648,6 +703,7 @@
               <select id="pkGame">
                 <option value="">Любая игра</option>
               </select>
+              <div id="pkCategoriesSource" class="hint">Источник каталога: —</div>
             </div>
             <div class="full">
               <label for="pkGameCustom">Игра (slug, ручной ввод)</label>
@@ -715,7 +771,95 @@
           </div>
           </div>
 
-          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">Прокси (общий пул)</div>
+          <div id="platimarketFiltersContainer" class="hidden">
+          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">Plati.Market фильтры</div>
+          <div class="grid">
+            <div>
+              <label for="pmProfile">Профиль</label>
+              <select id="pmProfile">
+                <option value="safe">safe</option>
+                <option value="balanced" selected>balanced</option>
+                <option value="deep">deep</option>
+              </select>
+            </div>
+            <div>
+              <label for="pmScopeMode">Источник области анализа</label>
+              <select id="pmScopeMode">
+                <option value="catalog">Каталог (ID_R)</option>
+                <option value="game">Игра (ID_C)</option>
+              </select>
+            </div>
+            <div class="full">
+              <div id="pmScopeHint" class="hint">Выберите источник области анализа: каталог или игру.</div>
+            </div>
+            <div id="pmCatalogScopeBlock" class="full">
+              <label for="pmSectionSearch">Дерево каталога Plati (ID_R)</label>
+              <input id="pmSectionSearch" type="text" placeholder="Фильтр разделов по названию или ID" />
+              <div class="actions compact" style="margin-top:6px;">
+                <button id="pmSectionSelectVisible" type="button" class="btn-secondary">Отметить видимые</button>
+                <button id="pmSectionClearVisible" type="button" class="btn-secondary">Снять видимые</button>
+                <span id="pmSectionSelectedCount" class="chip-inline">Выбрано: 0</span>
+              </div>
+              <div id="pmCatalogTreeSource" class="hint">Источник каталога: —</div>
+              <div id="pmSectionChecklist" class="section-checklist tree-host"></div>
+            </div>
+            <div id="pmGameScopeBlock" class="full hidden">
+              <div class="grid">
+                <div class="full">
+                  <label for="pmGame">Игра Plati.Market</label>
+                  <select id="pmGame">
+                    <option value="">Любая игра</option>
+                  </select>
+                  <div id="pmGamesSource" class="hint">Источник списка игр: —</div>
+                </div>
+                <div class="full">
+                  <details id="pmGameAdvanced">
+                    <summary>Advanced: slug / URL / ID игры</summary>
+                    <div style="margin-top:8px;">
+                      <label for="pmGameCustom">Игра (slug / URL / ID, вручную)</label>
+                      <input id="pmGameCustom" type="text" placeholder="например: pragmata или https://plati.market/games/pragmata/1848/" />
+                      <div id="pmGameHint" class="hint">Используйте только если игра не находится в списке.</div>
+                    </div>
+                  </details>
+                </div>
+                <div class="full">
+                  <label for="pmGameCategorySearch">Категории выбранной игры (ID_C)</label>
+                  <input id="pmGameCategorySearch" type="text" placeholder="Фильтр категорий игры по названию" />
+                  <div class="actions compact" style="margin-top:6px;">
+                    <button id="pmGameCategorySelectVisible" type="button" class="btn-secondary">Отметить видимые</button>
+                    <button id="pmGameCategoryClearVisible" type="button" class="btn-secondary">Снять видимые</button>
+                    <span id="pmGameCategorySelectedCount" class="chip-inline">Выбрано: 0</span>
+                  </div>
+                  <div id="pmGameCategoryChecklist" class="section-checklist"></div>
+                  <div id="pmGameCategoriesSource" class="hint">Источник категорий игры: —</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label for="pmSectionLimit">Лимит разделов сканирования</label>
+              <input id="pmSectionLimit" type="number" min="1" max="500" placeholder="по профилю" />
+            </div>
+            <div>
+              <label for="pmSellerLimit">Топ-продавцов для анализа отзывов</label>
+              <input id="pmSellerLimit" type="number" min="1" max="20" value="3" />
+            </div>
+            <div>
+              <label for="pmReviewPages">Страниц отзывов на продавца</label>
+              <input id="pmReviewPages" type="number" min="1" max="20" value="3" />
+            </div>
+            <div>
+              <label for="pmHistoryPoints">Точек в истории</label>
+              <input id="pmHistoryPoints" type="number" min="5" max="365" value="60" />
+            </div>
+            <div class="full checks">
+              <label class="check"><input id="pmIncludeReviews" type="checkbox" />Анализировать отзывы</label>
+              <label class="check"><input id="pmIncludeDemand" type="checkbox" />Считать Demand Index</label>
+              <label class="check"><input id="pmIncludeFallback" type="checkbox" checked />Резервный обход разделов</label>
+            </div>
+          </div>
+          </div>
+
+          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">Сетевые настройки (общий пул прокси)</div>
           <div class="grid">
             <div>
               <label for="commonDcProxy">Datacenter</label>
@@ -729,6 +873,11 @@
               <label for="commonMobProxy">Mobile</label>
               <textarea id="commonMobProxy" placeholder="http://user:pass@ip:port"></textarea>
             </div>
+            <div class="full actions">
+              <button id="saveNetworkSettingsBtn" type="button" class="btn-secondary">Сохранить сетевые настройки</button>
+              <button id="reloadNetworkSettingsBtn" type="button" class="btn-secondary">Перезагрузить из БД</button>
+            </div>
+            <div class="full hint" id="networkSettingsStatus">Сетевые настройки не загружены.</div>
           </div>
 
           <div class="actions">
@@ -964,6 +1113,18 @@
   </div>
 
   <div id="tooltip" class="tooltip"></div>
+  <div id="proxyFallbackModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="head">Прокси не настроены</div>
+      <div class="muted" id="proxyFallbackModalText">
+        Продолжить без прокси в этой сессии?
+      </div>
+      <div class="actions" style="margin-top:12px;">
+        <button id="proxyFallbackContinueBtn" type="button" class="btn">Продолжить</button>
+        <button id="proxyFallbackCancelBtn" type="button" class="btn-secondary">Отмена</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
@@ -985,6 +1146,15 @@
     let marketplacesCatalog = [];
     let categoriesCatalog = [];
     let playerokCategoriesCatalog = [];
+    let platiCatalogTree = [];
+    let platiGamesCatalog = [];
+    let platiGameCategoriesCatalog = [];
+    let funpayCatalogLoaded = false;
+    let playerokCatalogLoaded = false;
+    let platiCatalogTreeLoaded = false;
+    let platiGamesLoaded = false;
+    let networkSettingsLoaded = false;
+    let allowDirectFallbackSession = sessionStorage.getItem("marketstat_allow_direct_fallback") === "1";
     let currentMarketplaceResult = null;
     let fullOffers = [];
     let filteredOffers = [];
@@ -992,6 +1162,10 @@
     let sellerFocusPoint = null;
     let selectedSectionIds = new Set();
     let selectedPlayerOkSectionSlugs = new Set();
+    let selectedPlatiCategoryIds = new Set();
+    let selectedPlatiGameCategoryIds = new Set();
+    let platiTreeExpandedIds = new Set();
+    let platiScopeMode = "catalog";
     let offersPage = 0;
 
     const routePath = window.location.pathname;
@@ -999,6 +1173,7 @@
     const activeMarketplace = isMarketplaceRoute ? routePath.split("/")[2] : null;
     const isFunPayRoute = isMarketplaceRoute && activeMarketplace === "funpay";
     const isPlayerOkRoute = isMarketplaceRoute && activeMarketplace === "playerok";
+    const isPlatiRoute = isMarketplaceRoute && activeMarketplace === "platimarket";
 
     const chartState = {
       price: { bins: [], bars: [], hoverIndex: -1, canvas: $("marketPriceCanvas") },
@@ -1059,6 +1234,12 @@
     };
 
     let currentUiLocale = $("uiLocale").value || "ru";
+    const savedPlatiScopeMode = localStorage.getItem("marketstat_v2_plati_scope_mode");
+    if (savedPlatiScopeMode === "catalog" || savedPlatiScopeMode === "game") {
+      platiScopeMode = savedPlatiScopeMode;
+      const scopeSelect = $("pmScopeMode");
+      if (scopeSelect) scopeSelect.value = savedPlatiScopeMode;
+    }
 
     function t(key, vars = {}) {
       const dict = I18N[currentUiLocale] || I18N.ru;
@@ -1090,6 +1271,9 @@
       if (!sid) return null;
       if (marketplace === "playerok") {
         return safeUrl(`https://playerok.com/profile/${encodeURIComponent(sid)}/products`);
+      }
+      if (marketplace === "platimarket") {
+        return safeUrl(`https://plati.market/seller/${encodeURIComponent(sid)}/`);
       }
       return safeUrl(`https://funpay.com/users/${encodeURIComponent(sid)}/`);
     }
@@ -1222,6 +1406,67 @@
       node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
     }
 
+    function syncPlatiSectionSelectionFromDom() {
+      const checklist = $("pmSectionChecklist");
+      if (!checklist) return;
+      const boxes = Array.from(checklist.querySelectorAll("input[type='checkbox'][data-section-id]"));
+      for (const box of boxes) {
+        const id = Number(box.getAttribute("data-section-id"));
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (box.checked) selectedPlatiCategoryIds.add(Math.floor(id));
+        else selectedPlatiCategoryIds.delete(Math.floor(id));
+      }
+    }
+
+    function togglePlatiCategoryCascade(sectionId, checked) {
+      const id = Number(sectionId);
+      if (!Number.isFinite(id) || id <= 0) return;
+      const { childrenById } = getPlatiTreeIndex();
+      const subtree = collectPlatiDescendants(Math.floor(id), childrenById, new Set());
+      for (const nodeId of subtree) {
+        if (checked) selectedPlatiCategoryIds.add(nodeId);
+        else selectedPlatiCategoryIds.delete(nodeId);
+      }
+    }
+
+    function readSelectedPlatiCategoryIds() {
+      syncPlatiSectionSelectionFromDom();
+      return [...selectedPlatiCategoryIds].sort((a, b) => a - b);
+    }
+
+    function updatePlatiSectionSelectedCount() {
+      const node = $("pmSectionSelectedCount");
+      if (!node) return;
+      const count = selectedPlatiCategoryIds.size;
+      node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
+    }
+
+    function syncPlatiGameCategorySelectionFromDom() {
+      const checklist = $("pmGameCategoryChecklist");
+      if (!checklist) return;
+      const boxes = Array.from(checklist.querySelectorAll("input[type='checkbox'][data-game-category-id]"));
+      for (const box of boxes) {
+        const id = Number(box.getAttribute("data-game-category-id"));
+        if (!Number.isFinite(id) || id < 0) continue;
+        if (box.checked) selectedPlatiGameCategoryIds.add(Math.floor(id));
+        else selectedPlatiGameCategoryIds.delete(Math.floor(id));
+      }
+    }
+
+    function readSelectedPlatiGameCategoryIds() {
+      syncPlatiGameCategorySelectionFromDom();
+      return [...selectedPlatiGameCategoryIds]
+        .filter((id) => Number.isFinite(id) && id >= 0)
+        .sort((a, b) => a - b);
+    }
+
+    function updatePlatiGameCategorySelectedCount() {
+      const node = $("pmGameCategorySelectedCount");
+      if (!node) return;
+      const count = selectedPlatiGameCategoryIds.size;
+      node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
+    }
+
     function parseLines(id) {
       return $(id).value
         .split(/\r?\n/)
@@ -1262,6 +1507,67 @@
       return result;
     }
 
+    function parsePlatiGameOverride(rawValue) {
+      const raw = String(rawValue || "").trim();
+      if (!raw) return { gameId: null, gameSlug: null };
+      const cleaned = raw.replace(/^https?:\/\/(www\.)?plati\.market/i, "").trim();
+      const fromPath = cleaned.match(/\/?games\/([^/?#]+)(?:\/(\d+))?/i);
+      if (fromPath) {
+        return {
+          gameId: fromPath[2] ? Number(fromPath[2]) : null,
+          gameSlug: fromPath[1] ? String(fromPath[1]).trim().toLowerCase() : null,
+        };
+      }
+      if (/^\d+$/.test(cleaned)) {
+        return { gameId: Number(cleaned), gameSlug: null };
+      }
+      const slugAndId = cleaned.match(/^([^/\s?#]+)\/(\d+)$/i);
+      if (slugAndId) {
+        return {
+          gameId: Number(slugAndId[2]),
+          gameSlug: String(slugAndId[1]).trim().toLowerCase(),
+        };
+      }
+      return {
+        gameId: null,
+        gameSlug: String(cleaned).replace(/^\/+|\/+$/g, "").toLowerCase() || null,
+      };
+    }
+
+    function getPlatiScopeMode() {
+      const raw = String($("pmScopeMode")?.value || "catalog").trim().toLowerCase();
+      return raw === "game" ? "game" : "catalog";
+    }
+
+    async function setPlatiScopeMode(mode, { ensureData = true } = {}) {
+      platiScopeMode = mode === "game" ? "game" : "catalog";
+      localStorage.setItem("marketstat_v2_plati_scope_mode", platiScopeMode);
+      const modeSelect = $("pmScopeMode");
+      if (modeSelect && modeSelect.value !== platiScopeMode) {
+        modeSelect.value = platiScopeMode;
+      }
+      $("pmCatalogScopeBlock").classList.toggle("hidden", platiScopeMode !== "catalog");
+      $("pmGameScopeBlock").classList.toggle("hidden", platiScopeMode !== "game");
+      const scopeHint = $("pmScopeHint");
+      if (scopeHint) {
+        if (platiScopeMode === "catalog") {
+          scopeHint.textContent = currentUiLocale === "en"
+            ? "Step 2: select catalog sections (ID_R)."
+            : "Шаг 2: выберите разделы каталога (ID_R).";
+        } else {
+          scopeHint.textContent = currentUiLocale === "en"
+            ? "Step 2: select game and game categories (ID_C)."
+            : "Шаг 2: выберите игру и категории игры (ID_C).";
+        }
+      }
+      if (platiScopeMode === "game" && ensureData) {
+        if (!platiGamesLoaded) {
+          await loadPlatiGames();
+        }
+        await loadPlatiGameCategories();
+      }
+    }
+
     function setPlayerOkTab(tab) {
       const isSettings = tab === "settings";
       $("pkMainTab").classList.toggle("hidden", isSettings);
@@ -1294,9 +1600,15 @@
       const labels = [
         ["label[for='fpSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
         ["label[for='pkSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
+        ["label[for='pmSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
         ["label[for='uiLocale']", currentUiLocale === "en" ? "UI locale" : "Язык интерфейса"],
         ["label[for='fpSectionSearch']", currentUiLocale === "en" ? "Category sections (checkboxes)" : "Разделы категории (чекбоксы)"],
         ["label[for='pkSectionSearch']", currentUiLocale === "en" ? "PlayerOK sections (checkboxes)" : "Разделы PlayerOK (чекбоксы)"],
+        ["label[for='pmScopeMode']", currentUiLocale === "en" ? "Scope source" : "Источник области анализа"],
+        ["label[for='pmSectionSearch']", currentUiLocale === "en" ? "Plati catalog tree (ID_R)" : "Дерево каталога Plati (ID_R)"],
+        ["label[for='pmGame']", currentUiLocale === "en" ? "Plati.Market game" : "Игра Plati.Market"],
+        ["label[for='pmGameCustom']", currentUiLocale === "en" ? "Game (slug / URL / ID, manual)" : "Игра (slug / URL / ID, вручную)"],
+        ["label[for='pmGameCategorySearch']", currentUiLocale === "en" ? "Selected game categories (ID_C)" : "Категории выбранной игры (ID_C)"],
         ["label[for='pkGameCustom']", currentUiLocale === "en" ? "Game slug (manual input)" : "Игра (slug, ручной ввод)"],
         ["label[for='pkSectionsCustom']", currentUiLocale === "en" ? "Section slugs (manual input)" : "Разделы (slug, ручной ввод)"],
         ["label[for='pkAdvancedHeaders']", currentUiLocale === "en" ? "Extra headers (JSON or `Header: Value` lines)" : "Доп. заголовки (JSON или `Header: Value` по строкам)"],
@@ -1310,8 +1622,74 @@
       const pkSettingsBtn = $("pkTabSettingsBtn");
       if (pkMainBtn) pkMainBtn.textContent = currentUiLocale === "en" ? "Filters" : "Фильтры";
       if (pkSettingsBtn) pkSettingsBtn.textContent = currentUiLocale === "en" ? "Settings" : "Настройки";
+      const pmGameHint = $("pmGameHint");
+      if (pmGameHint) {
+        pmGameHint.textContent = currentUiLocale === "en"
+          ? "Use manual slug/URL/ID only if game is missing in dropdown."
+          : "Используйте ручной slug/URL/ID только если игра не находится в списке.";
+      }
+      const pmScopeModeSelect = $("pmScopeMode");
+      if (pmScopeModeSelect) {
+        const catalogOption = pmScopeModeSelect.querySelector("option[value='catalog']");
+        const gameOption = pmScopeModeSelect.querySelector("option[value='game']");
+        if (catalogOption) {
+          catalogOption.textContent = currentUiLocale === "en" ? "Catalog (ID_R)" : "Каталог (ID_R)";
+        }
+        if (gameOption) {
+          gameOption.textContent = currentUiLocale === "en" ? "Game (ID_C)" : "Игра (ID_C)";
+        }
+      }
+      const pmGameAdvancedSummary = document.querySelector("#pmGameAdvanced > summary");
+      if (pmGameAdvancedSummary) {
+        pmGameAdvancedSummary.textContent = currentUiLocale === "en"
+          ? "Advanced: game slug / URL / ID"
+          : "Advanced: slug / URL / ID игры";
+      }
+      const pmScopeHint = $("pmScopeHint");
+      if (pmScopeHint) {
+        pmScopeHint.textContent = currentUiLocale === "en"
+          ? "Step 1: choose scope source."
+          : "Шаг 1: выберите источник области анализа.";
+      }
+      const pmSectionSelectVisible = $("pmSectionSelectVisible");
+      const pmSectionClearVisible = $("pmSectionClearVisible");
+      if (pmSectionSelectVisible) {
+        pmSectionSelectVisible.textContent = currentUiLocale === "en" ? "Select visible" : "Отметить видимые";
+      }
+      if (pmSectionClearVisible) {
+        pmSectionClearVisible.textContent = currentUiLocale === "en" ? "Clear visible" : "Снять видимые";
+      }
+      const pmGameCategorySelectVisible = $("pmGameCategorySelectVisible");
+      const pmGameCategoryClearVisible = $("pmGameCategoryClearVisible");
+      if (pmGameCategorySelectVisible) {
+        pmGameCategorySelectVisible.textContent = currentUiLocale === "en" ? "Select visible" : "Отметить видимые";
+      }
+      if (pmGameCategoryClearVisible) {
+        pmGameCategoryClearVisible.textContent = currentUiLocale === "en" ? "Clear visible" : "Снять видимые";
+      }
+      const saveNetworkBtn = $("saveNetworkSettingsBtn");
+      const reloadNetworkBtn = $("reloadNetworkSettingsBtn");
+      if (saveNetworkBtn) {
+        saveNetworkBtn.textContent = currentUiLocale === "en" ? "Save network settings" : "Сохранить сетевые настройки";
+      }
+      if (reloadNetworkBtn) {
+        reloadNetworkBtn.textContent = currentUiLocale === "en" ? "Reload from DB" : "Перезагрузить из БД";
+      }
+      const modalText = $("proxyFallbackModalText");
+      if (modalText) {
+        modalText.textContent = currentUiLocale === "en"
+          ? "Continue without proxies for this session?"
+          : "Продолжить без прокси в этой сессии?";
+      }
+      const modalContinue = $("proxyFallbackContinueBtn");
+      const modalCancel = $("proxyFallbackCancelBtn");
+      if (modalContinue) modalContinue.textContent = currentUiLocale === "en" ? "Continue" : "Продолжить";
+      if (modalCancel) modalCancel.textContent = currentUiLocale === "en" ? "Cancel" : "Отмена";
       updateSectionSelectedCount();
       updatePlayerOkSectionSelectedCount();
+      updatePlatiSectionSelectedCount();
+      updatePlatiGameCategorySelectedCount();
+      setPlatiScopeMode(getPlatiScopeMode(), { ensureData: false });
       if (!selectedRunId) {
         lastUpdateChip.textContent = t("statusWaiting");
         statusBanner.textContent = t("statusWaiting");
@@ -1323,14 +1701,104 @@
       statusBanner.className = `status ${mode}`.trim();
     }
 
+    class ApiError extends Error {
+      constructor(message, { code = null, status = 0, detail = null } = {}) {
+        super(message);
+        this.name = "ApiError";
+        this.code = code;
+        this.status = status;
+        this.detail = detail;
+      }
+    }
+
+    let proxyFallbackResolver = null;
+    let proxyFallbackPromptPromise = null;
+
+    function askDirectFallback() {
+      return new Promise((resolve) => {
+        proxyFallbackResolver = resolve;
+        $("proxyFallbackModal").classList.remove("hidden");
+      });
+    }
+
+    function closeProxyFallbackModal(allow) {
+      $("proxyFallbackModal").classList.add("hidden");
+      if (proxyFallbackResolver) {
+        const resolver = proxyFallbackResolver;
+        proxyFallbackResolver = null;
+        resolver(Boolean(allow));
+      }
+    }
+
+    function persistDirectFallbackFlag(enabled) {
+      allowDirectFallbackSession = Boolean(enabled);
+      if (allowDirectFallbackSession) {
+        sessionStorage.setItem("marketstat_allow_direct_fallback", "1");
+      } else {
+        sessionStorage.removeItem("marketstat_allow_direct_fallback");
+      }
+    }
+
+    function withDirectFallbackQuery(url) {
+      const prepared = new URL(url, window.location.origin);
+      if (allowDirectFallbackSession) {
+        prepared.searchParams.set("allow_direct_fallback", "true");
+      }
+      if (!prepared.searchParams.has("force_refresh")) {
+        prepared.searchParams.set("force_refresh", "false");
+      }
+      return `${prepared.pathname}${prepared.search}`;
+    }
+
+    async function runWithProxyFallback(task) {
+      try {
+        return await task();
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.code !== "proxy_required") {
+          throw err;
+        }
+        if (allowDirectFallbackSession) {
+          throw err;
+        }
+        if (!proxyFallbackPromptPromise) {
+          proxyFallbackPromptPromise = askDirectFallback().finally(() => {
+            proxyFallbackPromptPromise = null;
+          });
+        }
+        const approved = await proxyFallbackPromptPromise;
+        if (!approved) {
+          throw err;
+        }
+        persistDirectFallbackFlag(true);
+        return await task();
+      }
+    }
+
     async function fetchJson(url, options = null) {
       const response = await fetch(url, options || undefined);
-      const data = await response.json();
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (_) {
+        data = null;
+      }
       if (!response.ok) {
         const detail = data?.detail;
-        if (typeof detail === "string") throw new Error(detail);
-        if (detail && typeof detail === "object") throw new Error(detail.message || JSON.stringify(detail));
-        throw new Error(JSON.stringify(data));
+        if (typeof detail === "string") {
+          throw new ApiError(detail, { status: response.status, detail });
+        }
+        if (detail && typeof detail === "object") {
+          const message = String(detail.message || detail.code || JSON.stringify(detail));
+          throw new ApiError(message, {
+            code: detail.code || null,
+            status: response.status,
+            detail,
+          });
+        }
+        throw new ApiError(String(data ? JSON.stringify(data) : response.statusText), {
+          status: response.status,
+          detail: data,
+        });
       }
       return data;
     }
@@ -1340,9 +1808,11 @@
       $("navOverview").href = `/${runPart}`;
       $("navFunPay").href = `/analysis/funpay${runPart}`;
       $("navPlayerOk").href = `/analysis/playerok${runPart}`;
+      $("navPlati").href = `/analysis/platimarket${runPart}`;
       $("navOverview").classList.toggle("active", !isMarketplaceRoute);
       $("navFunPay").classList.toggle("active", activeMarketplace === "funpay");
       $("navPlayerOk").classList.toggle("active", activeMarketplace === "playerok");
+      $("navPlati").classList.toggle("active", activeMarketplace === "platimarket");
 
       const runId = runIdInput.value.trim() || selectedRunId || "";
       const overviewLink = $("openRunOverviewLink");
@@ -1412,12 +1882,14 @@
       const runBtn = $("runBtn");
       const funpayFilters = $("funpayFiltersContainer");
       const playerokFilters = $("playerokFiltersContainer");
+      const platiFilters = $("platimarketFiltersContainer");
       const commonOptions = $("commonOptionsBlock");
       const singleHintValue = singleHint.querySelector(".value");
 
       runBtn.disabled = false;
       funpayFilters.classList.remove("hidden");
       playerokFilters.classList.add("hidden");
+      platiFilters.classList.add("hidden");
       commonOptions.classList.remove("hidden");
 
       if (isFunPayRoute) {
@@ -1430,6 +1902,7 @@
         if (singleHintValue) singleHintValue.textContent = "Только FunPay (страница площадки)";
         fpPresetBlock.classList.remove("hidden");
         playerokFilters.classList.add("hidden");
+        platiFilters.classList.add("hidden");
         runBtn.textContent = "Запустить анализ FunPay";
         return;
       }
@@ -1445,11 +1918,28 @@
         fpPresetBlock.classList.add("hidden");
         funpayFilters.classList.add("hidden");
         playerokFilters.classList.remove("hidden");
+        platiFilters.classList.add("hidden");
         runBtn.textContent = "Запустить анализ PlayerOK";
         return;
       }
 
-      if (isMarketplaceRoute && !isFunPayRoute && !isPlayerOkRoute) {
+      if (isPlatiRoute) {
+        formHead.textContent = "Запуск анализа Plati.Market";
+        formModeNotice.className = "status ok";
+        formModeNotice.textContent = "Режим страницы площадки: запускается только Plati.Market, без выбора других площадок.";
+        formModeNotice.classList.remove("hidden");
+        marketBlock.classList.add("hidden");
+        singleHint.classList.remove("hidden");
+        if (singleHintValue) singleHintValue.textContent = "Только Plati.Market (страница площадки)";
+        fpPresetBlock.classList.add("hidden");
+        funpayFilters.classList.add("hidden");
+        playerokFilters.classList.add("hidden");
+        platiFilters.classList.remove("hidden");
+        runBtn.textContent = "Запустить анализ Plati.Market";
+        return;
+      }
+
+      if (isMarketplaceRoute && !isFunPayRoute && !isPlayerOkRoute && !isPlatiRoute) {
         formHead.textContent = "Запуск анализа площадки";
         formModeNotice.className = "status err";
         formModeNotice.textContent = `Площадка "${activeMarketplace}" пока не реализована. Запуск недоступен.`;
@@ -1459,6 +1949,7 @@
         fpPresetBlock.classList.add("hidden");
         funpayFilters.classList.add("hidden");
         playerokFilters.classList.add("hidden");
+        platiFilters.classList.add("hidden");
         commonOptions.classList.add("hidden");
         runBtn.textContent = "Запуск недоступен";
         runBtn.disabled = true;
@@ -1467,7 +1958,7 @@
 
       formHead.textContent = "Фильтры общего запуска";
       formModeNotice.className = "status warn";
-      formModeNotice.textContent = "Мульти-площадочный режим: выберите площадки для общего анализа. Для детального запуска FunPay используйте страницу FunPay.";
+      formModeNotice.textContent = "Мульти-площадочный режим: выберите площадки для общего анализа. Для детального запуска используйте страницу нужной площадки.";
       formModeNotice.classList.remove("hidden");
       marketBlock.classList.remove("hidden");
       singleHint.classList.add("hidden");
@@ -1818,6 +2309,7 @@
           },
           { label: "Описание", render: (row) => row.description || "—" },
           { label: "Цена", render: (row) => formatMoney(row.price, row.currency || $("currency").value) },
+          { label: "Продано", render: (row) => row.sold_text || formatNum(row.sold_count) || "—" },
           { label: "Отзывы", render: (row) => formatNum(row.reviews_count) },
           { label: "Онлайн", render: (row) => (row.is_online === true ? t("yes") : (row.is_online === false ? t("no") : "—")) },
           { label: "Авто", render: (row) => (row.auto_delivery === true ? t("yes") : (row.auto_delivery === false ? t("no") : "—")) },
@@ -2198,9 +2690,17 @@
       const topDemandSellers = tables?.top_demand_sellers || [];
       const sections = tables?.sections || [];
       const demand = summary.demand || null;
+      const soldTotal = demand ? (demand.purchases_from_sold_total ?? demand.estimated_purchases_total) : null;
+      const reviews30d = demand ? (demand.purchases_from_reviews_30d ?? demand.estimated_purchases_30d) : null;
+      const reviewsTotal = demand ? (demand.purchases_from_reviews_total ?? demand.relevant_reviews) : null;
+      const totalLowerBound = Boolean(demand?.purchases_total_is_lower_bound);
       const demandCards = [
-        ["Покупки (30д)", demand ? formatNum(demand.estimated_purchases_30d) : "—"],
-        ["Покупки (всего)", demand ? formatNum(demand.estimated_purchases_total) : "—"],
+        [
+          totalLowerBound ? "Покупки (всего, sold lower-bound)" : "Покупки (всего, sold)",
+          demand ? formatNum(soldTotal) : "—",
+        ],
+        ["Покупки (30д, отзывы)", demand ? formatNum(reviews30d) : "—"],
+        ["Покупки (отзывы, всего)", demand ? formatNum(reviewsTotal) : "—"],
         ["Проверено продавцов", demand ? formatNum(demand.sellers_analyzed) : "—"],
         ["Сканировано отзывов", demand ? formatNum(demand.reviews_scanned) : "—"],
       ];
@@ -2220,7 +2720,7 @@
             },
           },
           { label: "Покупки 30д", render: (r) => formatNum(r.estimated_purchases_30d) },
-          { label: "Покупки всего", render: (r) => formatNum(r.estimated_purchases_total) },
+          { label: "Покупки всего (sold)", render: (r) => formatNum(r.estimated_purchases_total) },
           { label: "Отзывы", render: (r) => formatNum(r.reviews_scanned) },
         ],
         topDemandSellers
@@ -2229,12 +2729,19 @@
         $("topOffersTable"),
         [
           {
-            label: "Оффер",
+            label: "Товар",
             isHtml: true,
             render: (r) => {
               const href = safeUrl(r.offer_url);
-              const text = escapeHtml(`#${r.offer_id}`);
-              return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+              const title = escapeHtml(String(r.description || r.title || `#${r.offer_id || "?"}`));
+              const offerId = escapeHtml(`#${r.offer_id ?? "?"}`);
+              if (!href) {
+                return `${title}<div class="mono" style="opacity:.65; margin-top:2px;">${offerId}</div>`;
+              }
+              return `
+                <a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${title}</a>
+                <div class="mono" style="opacity:.65; margin-top:2px;">${offerId}</div>
+              `;
             },
           },
           {
@@ -2247,6 +2754,7 @@
             },
           },
           { label: "Цена", render: (r) => formatMoney(r.price, r.currency || $("currency").value) },
+          { label: "Продано", render: (r) => r.sold_text || formatNum(r.sold_count) || "—" },
           { label: "Отзывы", render: (r) => formatNum(r.reviews_count) },
         ],
         topOffers
@@ -2338,7 +2846,8 @@
 
       filteredOffers = sorted;
       const sections = currentMarketplaceResult?.raw?.legacy_result?.tables?.sections || [];
-      renderMarketAnalytics(filteredOffers, sections);
+      const marketplace = currentMarketplaceResult?.summary?.marketplace || activeMarketplace || "funpay";
+      renderMarketAnalytics(filteredOffers, sections, marketplace);
       const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
       if (offersPage > pages - 1) offersPage = pages - 1;
       const offset = offersPage * pageSize;
@@ -2372,6 +2881,7 @@
           },
           { label: "Описание", render: (r) => r.description || "—" },
           { label: "Цена", render: (r) => formatMoney(r.price, r.currency || $("currency").value) },
+          { label: "Продано", render: (r) => r.sold_text || formatNum(r.sold_count) || "—" },
           { label: "Отзывы", render: (r) => formatNum(r.reviews_count) },
           { label: "Онлайн", render: (r) => (r.is_online === true ? t("yes") : (r.is_online === false ? t("no") : "—")) },
           { label: "Авто", render: (r) => (r.auto_delivery === true ? t("yes") : (r.auto_delivery === false ? t("no") : "—")) },
@@ -2399,6 +2909,9 @@
         "description",
         "price",
         "currency",
+        "sold_count",
+        "sold_text",
+        "sold_is_lower_bound",
         "reviews_count",
         "is_online",
         "auto_delivery",
@@ -2413,6 +2926,9 @@
           item.description,
           item.price,
           item.currency,
+          item.sold_count,
+          item.sold_text,
+          item.sold_is_lower_bound,
           item.reviews_count,
           item.is_online,
           item.auto_delivery,
@@ -2437,6 +2953,9 @@
       if (isPlayerOkRoute) {
         return ["playerok"];
       }
+      if (isPlatiRoute) {
+        return ["platimarket"];
+      }
       const checked = Array.from(document.querySelectorAll("input[name='marketplace']:checked"))
         .map((item) => item.value);
       return checked;
@@ -2452,10 +2971,8 @@
           currency: $("currency").value,
           ui_locale: uiLocale,
           force_refresh: $("forceRefresh").checked,
+          allow_direct_fallback: allowDirectFallbackSession,
           execution: $("execution").value,
-          datacenter_proxies: parseLines("commonDcProxy"),
-          residential_proxies: parseLines("commonResProxy"),
-          mobile_proxies: parseLines("commonMobProxy"),
         },
         marketplace_filters: {},
       };
@@ -2517,6 +3034,85 @@
           payload.marketplace_filters.playerok.advanced_cookies = advancedCookies;
         }
       }
+      if (marketplaces.includes("platimarket")) {
+        const scopeMode = getPlatiScopeMode();
+        const requestedSectionLimit = readInt("pmSectionLimit");
+        const optionsPayload = {
+          profile: $("pmProfile").value,
+          include_reviews: $("pmIncludeReviews").checked,
+          include_demand_index: $("pmIncludeDemand").checked,
+          include_fallback_scan: $("pmIncludeFallback").checked,
+          section_limit: requestedSectionLimit,
+          seller_limit: readInt("pmSellerLimit"),
+          review_pages_per_seller: readInt("pmReviewPages"),
+          history_points_limit: readInt("pmHistoryPoints"),
+        };
+        if (scopeMode === "catalog") {
+          const selectedSections = readSelectedPlatiCategoryIds();
+          const effectiveSectionLimit = (
+            requestedSectionLimit !== null
+              ? requestedSectionLimit
+              : (selectedSections.length > 0 ? selectedSections.length : null)
+          );
+          payload.marketplace_filters.platimarket = {
+            category_game_id: null,
+            category_game_slug: null,
+            category_game_name: null,
+            game_category_ids: [],
+            category_group_id: null,
+            category_ids: selectedSections,
+            use_game_scope: false,
+            use_group_scope: false,
+            options: {
+              ...optionsPayload,
+              section_limit: effectiveSectionLimit,
+            },
+          };
+        } else {
+          const selectedGameCategoryIds = readSelectedPlatiGameCategoryIds();
+          const selectedGameIdFromSelect = readInt("pmGame");
+          const manualGame = parsePlatiGameOverride($("pmGameCustom").value);
+          const selectedGame = Array.isArray(platiGamesCatalog)
+            ? platiGamesCatalog.find((item) => Number(item.game_id) === selectedGameIdFromSelect)
+            : null;
+          let selectedGameId = selectedGameIdFromSelect;
+          let selectedGameSlug = selectedGame ? String(selectedGame.game_slug || "") : null;
+          let selectedGameName = selectedGame ? String(selectedGame.game_name || "") : null;
+          if (manualGame.gameId !== null || manualGame.gameSlug !== null) {
+            if (manualGame.gameId !== null) {
+              selectedGameId = manualGame.gameId;
+            }
+            if (manualGame.gameSlug) {
+              selectedGameSlug = manualGame.gameSlug;
+            }
+            if (Array.isArray(platiGamesCatalog) && platiGamesCatalog.length > 0) {
+              const byId = selectedGameId !== null
+                ? platiGamesCatalog.find((item) => Number(item.game_id) === selectedGameId)
+                : null;
+              const bySlug = selectedGameSlug
+                ? platiGamesCatalog.find((item) => String(item.game_slug || "").toLowerCase() === selectedGameSlug)
+                : null;
+              const matched = byId || bySlug || null;
+              if (matched) {
+                if (selectedGameId === null) selectedGameId = Number(matched.game_id);
+                if (!selectedGameSlug) selectedGameSlug = String(matched.game_slug || "") || null;
+                selectedGameName = String(matched.game_name || "") || selectedGameName;
+              }
+            }
+          }
+          payload.marketplace_filters.platimarket = {
+            category_game_id: selectedGameId,
+            category_game_slug: selectedGameSlug,
+            category_game_name: selectedGameName,
+            game_category_ids: selectedGameCategoryIds,
+            category_group_id: null,
+            category_ids: [],
+            use_game_scope: true,
+            use_group_scope: false,
+            options: optionsPayload,
+          };
+        }
+      }
       return payload;
     }
 
@@ -2546,11 +3142,79 @@
       syncOverviewMarketplaceFilterBlocks();
     }
 
+    function renderNetworkSettingsStatus(text, mode = "") {
+      const node = $("networkSettingsStatus");
+      if (!node) return;
+      node.textContent = text;
+      node.className = `hint ${mode}`.trim();
+    }
+
+    async function loadNetworkSettings() {
+      const data = await fetchJson("/v2/settings/network");
+      $("commonDcProxy").value = (data.datacenter_proxies || []).join("\n");
+      $("commonResProxy").value = (data.residential_proxies || []).join("\n");
+      $("commonMobProxy").value = (data.mobile_proxies || []).join("\n");
+      networkSettingsLoaded = true;
+      const updated = data.updated_at ? new Date(data.updated_at).toLocaleString(localeTag()) : "—";
+      renderNetworkSettingsStatus(
+        currentUiLocale === "en"
+          ? `Network settings loaded. Updated: ${updated}.`
+          : `Сетевые настройки загружены. Обновлено: ${updated}.`,
+        "ok"
+      );
+    }
+
+    async function saveNetworkSettings() {
+      const payload = {
+        datacenter_proxies: parseLines("commonDcProxy"),
+        residential_proxies: parseLines("commonResProxy"),
+        mobile_proxies: parseLines("commonMobProxy"),
+      };
+      const data = await fetchJson("/v2/settings/network", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const updated = data.updated_at ? new Date(data.updated_at).toLocaleString(localeTag()) : "—";
+      renderNetworkSettingsStatus(
+        currentUiLocale === "en"
+          ? `Network settings saved. Updated: ${updated}.`
+          : `Сетевые настройки сохранены. Обновлено: ${updated}.`,
+        "ok"
+      );
+    }
+
+    async function ensureMarketplaceCatalogLoaded(slug) {
+      if (slug === "funpay" && !funpayCatalogLoaded) {
+        await loadFunPayCategories();
+        return;
+      }
+      if (slug === "playerok" && !playerokCatalogLoaded) {
+        await loadPlayerOkCategories();
+        return;
+      }
+      if (slug === "platimarket") {
+        if (!platiCatalogTreeLoaded) {
+          await loadPlatiCategories();
+        }
+        if (getPlatiScopeMode() === "game" && !platiGamesLoaded) {
+          await loadPlatiGames();
+        }
+      }
+    }
+
     function syncOverviewMarketplaceFilterBlocks() {
       if (isMarketplaceRoute) return;
       const selected = new Set(selectMarketplaceValues());
       $("funpayFiltersContainer").classList.toggle("hidden", !selected.has("funpay"));
       $("playerokFiltersContainer").classList.toggle("hidden", !selected.has("playerok"));
+      $("platimarketFiltersContainer").classList.toggle("hidden", !selected.has("platimarket"));
+      for (const slug of selected) {
+        ensureMarketplaceCatalogLoaded(slug).catch(() => null);
+      }
     }
 
     function syncHistoryMarketplaceFilter() {
@@ -2683,6 +3347,168 @@
       }).join("");
       updatePlayerOkSectionSelectedCount();
     }
+    function getPlatiCatalogSectionsFlat() {
+      const rows = [];
+      const walk = (node) => {
+        if (!node || typeof node !== "object") return;
+        const id = Number(node.section_id);
+        if (Number.isFinite(id) && id > 0) {
+          const path = Array.isArray(node.path) ? node.path.filter((part) => String(part || "").trim()) : [];
+          const title = String(node.title || path[path.length - 1] || `ID_R #${id}`).trim();
+          rows.push({
+            section_id: Math.floor(id),
+            section_slug: String(node.section_slug || "").trim(),
+            section_name: title,
+            full_name: path.length ? path.join(" > ") : title,
+            counter_total: (node.cnt === null || node.cnt === undefined) ? null : Number(node.cnt),
+            url: String(node.url || "").trim(),
+            children: Array.isArray(node.children) ? node.children : [],
+          });
+        }
+        for (const child of Array.isArray(node.children) ? node.children : []) {
+          walk(child);
+        }
+      };
+      for (const root of platiCatalogTree || []) {
+        walk(root);
+      }
+      rows.sort((left, right) => `${left.full_name}`.localeCompare(`${right.full_name}`));
+      return rows;
+    }
+
+    function getPlatiTreeIndex() {
+      const byId = new Map();
+      const childrenById = new Map();
+      const walk = (node) => {
+        if (!node || typeof node !== "object") return;
+        const id = Number(node.section_id);
+        if (!Number.isFinite(id) || id <= 0) return;
+        byId.set(id, node);
+        const children = (Array.isArray(node.children) ? node.children : [])
+          .map((child) => Number(child.section_id))
+          .filter((childId) => Number.isFinite(childId) && childId > 0);
+        childrenById.set(id, children);
+        for (const child of Array.isArray(node.children) ? node.children : []) {
+          walk(child);
+        }
+      };
+      for (const root of platiCatalogTree || []) {
+        walk(root);
+      }
+      return { byId, childrenById };
+    }
+
+    function collectPlatiDescendants(sectionId, childrenById, acc = new Set()) {
+      if (acc.has(sectionId)) return acc;
+      acc.add(sectionId);
+      const children = childrenById.get(sectionId) || [];
+      for (const childId of children) {
+        collectPlatiDescendants(childId, childrenById, acc);
+      }
+      return acc;
+    }
+
+    function matchesPlatiTreeNode(node, query) {
+      if (!query) return true;
+      const sectionId = Number(node.section_id);
+      const haystack = [
+        node.title,
+        node.section_slug,
+        (Array.isArray(node.path) ? node.path.join(" ") : ""),
+        Number.isFinite(sectionId) ? String(sectionId) : "",
+      ].join(" ").toLowerCase();
+      return haystack.includes(query);
+    }
+
+    function renderPlatiTreeNode(node, searchValue) {
+      const sectionId = Number(node.section_id);
+      if (!Number.isFinite(sectionId) || sectionId <= 0) return { html: "", visible: false };
+      const children = Array.isArray(node.children) ? node.children : [];
+      const renderedChildren = children.map((child) => renderPlatiTreeNode(child, searchValue));
+      const visibleChildren = renderedChildren.filter((item) => item.visible);
+      const selfVisible = matchesPlatiTreeNode(node, searchValue);
+      const visible = !searchValue || selfVisible || visibleChildren.length > 0;
+      if (!visible) return { html: "", visible: false };
+      const checked = selectedPlatiCategoryIds.has(sectionId) ? "checked" : "";
+      const title = String(node.title || `ID_R #${sectionId}`);
+      const path = Array.isArray(node.path) ? node.path.filter((part) => String(part || "").trim()) : [];
+      const fullName = path.length ? path.join(" > ") : title;
+      const hasCount = Number.isFinite(Number(node.cnt)) && Number(node.cnt) > 0;
+      const hasChildren = children.length > 0;
+      const shouldOpen = searchValue
+        ? true
+        : (platiTreeExpandedIds.has(sectionId) || path.length <= 1);
+      const childHtml = visibleChildren.map((item) => item.html).join("");
+      const detailsHtml = hasChildren
+        ? `<details data-tree-id="${sectionId}" ${shouldOpen ? "open" : ""}>
+            <summary>${currentUiLocale === "en" ? "Subsections" : "Подразделы"}: ${visibleChildren.length}</summary>
+            <div class="tree-children">${childHtml}</div>
+          </details>`
+        : "";
+      return {
+        visible: true,
+        html: `
+          <div class="tree-node">
+            <label class="tree-row">
+              <input type="checkbox" data-section-id="${sectionId}" ${checked} />
+              <div>
+                <div><b>${escapeHtml(fullName)}</b></div>
+                <div class="tree-meta">ID_R: ${sectionId}${hasCount ? ` · ${currentUiLocale === "en" ? "offers" : "офферов"}: ${formatNum(node.cnt)}` : ""}</div>
+              </div>
+            </label>
+            ${detailsHtml}
+          </div>
+        `,
+      };
+    }
+
+    function updatePlatiSectionOptions() {
+      syncPlatiSectionSelectionFromDom();
+      const searchValue = String($("pmSectionSearch").value || "").trim().toLowerCase();
+      const checklist = $("pmSectionChecklist");
+      const rendered = (platiCatalogTree || []).map((root) => renderPlatiTreeNode(root, searchValue));
+      const visible = rendered.filter((item) => item.visible);
+      if (!visible.length) {
+        checklist.innerHTML = `<div class="section-empty">${currentUiLocale === "en" ? "No sections found by current filter." : "По текущему фильтру разделы не найдены."}</div>`;
+        updatePlatiSectionSelectedCount();
+        return;
+      }
+      checklist.innerHTML = visible.map((item) => item.html).join("");
+      updatePlatiSectionSelectedCount();
+    }
+
+    function updatePlatiGameCategoryOptions() {
+      syncPlatiGameCategorySelectionFromDom();
+      const searchValue = String($("pmGameCategorySearch").value || "").trim().toLowerCase();
+      const options = Array.isArray(platiGameCategoriesCatalog) ? platiGameCategoriesCatalog : [];
+      const filtered = searchValue
+        ? options.filter((item) => String(item.category_name || "").toLowerCase().includes(searchValue))
+        : options;
+      const checklist = $("pmGameCategoryChecklist");
+      if (!filtered.length) {
+        checklist.innerHTML = `<div class="section-empty">${currentUiLocale === "en" ? "No game categories loaded." : "Категории игры не загружены."}</div>`;
+        updatePlatiGameCategorySelectedCount();
+        return;
+      }
+      checklist.innerHTML = filtered.map((item) => {
+        const id = Number(item.category_id);
+        if (!Number.isFinite(id) || id < 0) return "";
+        const checked = selectedPlatiGameCategoryIds.has(id) ? "checked" : "";
+        const offers = item.offers_count === null || item.offers_count === undefined
+          ? "—"
+          : formatNum(item.offers_count);
+        return `
+          <label class="check section-item">
+            <input type="checkbox" data-game-category-id="${id}" ${checked} />
+            <div>
+              <div><b>${escapeHtml(item.category_name || `ID_C #${id}`)}</b></div>
+              <div class="hint">ID_C: ${id} · ${currentUiLocale === "en" ? "offers" : "офферов"}: ${offers}</div>
+            </div>
+          </label>
+        `;
+      }).join("");
+      updatePlatiGameCategorySelectedCount();
+    }
 
     async function loadMarketplaces() {
       const data = await fetchJson("/v2/marketplaces");
@@ -2692,7 +3518,9 @@
     }
 
     async function loadFunPayCategories() {
-      const data = await fetchJson("/v2/marketplaces/funpay/categories");
+      const data = await runWithProxyFallback(() =>
+        fetchJson(withDirectFallbackQuery("/v2/marketplaces/funpay/categories"))
+      );
       categoriesCatalog = data.games || [];
       selectedSectionIds = new Set();
       const options = ['<option value="">Любая игра</option>'];
@@ -2701,6 +3529,7 @@
       }
       $("fpGame").innerHTML = options.join("");
       updateSectionOptions();
+      funpayCatalogLoaded = true;
     }
 
     function normalizePlayerOkGames(rawGames, assumeLoaded = false) {
@@ -2784,18 +3613,104 @@
       if (current && current.sections_loaded && Array.isArray(current.sections) && current.sections.length > 0) {
         return;
       }
-      const data = await fetchJson(`/v2/marketplaces/playerok/categories?game_slug=${encodeURIComponent(slug)}`);
+      const data = await runWithProxyFallback(() =>
+        fetchJson(withDirectFallbackQuery(`/v2/marketplaces/playerok/categories?game_slug=${encodeURIComponent(slug)}`))
+      );
       const loadedGames = normalizePlayerOkGames(Array.isArray(data.games) ? data.games : [], true);
       if (!loadedGames.length) return;
       mergePlayerOkGames(loadedGames);
     }
 
     async function loadPlayerOkCategories() {
-      const data = await fetchJson("/v2/marketplaces/playerok/categories");
+      const data = await runWithProxyFallback(() =>
+        fetchJson(withDirectFallbackQuery("/v2/marketplaces/playerok/categories"))
+      );
       const normalized = normalizePlayerOkGames(Array.isArray(data.games) ? data.games : [], false);
       playerokCategoriesCatalog = [];
       mergePlayerOkGames(normalized);
       renderPlayerOkGamesSelect();
+      $("pkCategoriesSource").textContent = currentUiLocale === "en"
+        ? `Catalog source: ${data.source || "network"}`
+        : `Источник каталога: ${data.source || "network"}`;
+      playerokCatalogLoaded = true;
+    }
+
+    async function loadPlatiCategories() {
+      const data = await runWithProxyFallback(() =>
+        fetchJson(withDirectFallbackQuery("/v2/marketplaces/platimarket/catalog-tree"))
+      );
+      platiCatalogTree = Array.isArray(data.nodes) ? data.nodes : [];
+      const validIds = new Set(getPlatiCatalogSectionsFlat().map((item) => Number(item.section_id)));
+      selectedPlatiCategoryIds = new Set([...selectedPlatiCategoryIds].filter((id) => validIds.has(id)));
+      updatePlatiSectionOptions();
+      $("pmCatalogTreeSource").textContent = currentUiLocale === "en"
+        ? `Catalog source: ${data.source || "network"}`
+        : `Источник каталога: ${data.source || "network"}`;
+      platiCatalogTreeLoaded = true;
+    }
+
+    async function loadPlatiGames() {
+      const data = await runWithProxyFallback(() =>
+        fetchJson(withDirectFallbackQuery("/v2/marketplaces/platimarket/games"))
+      );
+      platiGamesCatalog = Array.isArray(data.games) ? data.games : [];
+      const options = [
+        `<option value="">${currentUiLocale === "en" ? "Any game" : "Любая игра"}</option>`,
+      ];
+      for (const game of platiGamesCatalog) {
+        options.push(`<option value="${escapeHtml(game.game_id)}">${escapeHtml(game.game_name)}</option>`);
+      }
+      $("pmGame").innerHTML = options.join("");
+      $("pmGamesSource").textContent = currentUiLocale === "en"
+        ? `Games source: ${data.source || "network"}`
+        : `Источник списка игр: ${data.source || "network"}`;
+      platiGamesLoaded = true;
+    }
+
+    async function loadPlatiGameCategories() {
+      if (getPlatiScopeMode() !== "game") {
+        platiGameCategoriesCatalog = [];
+        selectedPlatiGameCategoryIds = new Set();
+        updatePlatiGameCategoryOptions();
+        $("pmGameCategoriesSource").textContent = currentUiLocale === "en"
+          ? "Game categories source: —"
+          : "Источник категорий игры: —";
+        return;
+      }
+      const selectedGameIdFromSelect = readInt("pmGame");
+      const manualGame = parsePlatiGameOverride($("pmGameCustom").value);
+      const selectedGameId = manualGame.gameId !== null ? manualGame.gameId : selectedGameIdFromSelect;
+      let selectedGameSlug = manualGame.gameSlug;
+      if (!selectedGameSlug && selectedGameId !== null && Array.isArray(platiGamesCatalog)) {
+        const matched = platiGamesCatalog.find((item) => Number(item.game_id) === selectedGameId);
+        if (matched) selectedGameSlug = String(matched.game_slug || "").trim() || null;
+      }
+      if (selectedGameId === null && !selectedGameSlug) {
+        platiGameCategoriesCatalog = [];
+        selectedPlatiGameCategoryIds = new Set();
+        updatePlatiGameCategoryOptions();
+        $("pmGameCategoriesSource").textContent = currentUiLocale === "en"
+          ? "Game categories source: —"
+          : "Источник категорий игры: —";
+        return;
+      }
+
+      const query = new URLSearchParams();
+      if (selectedGameId !== null) query.set("game_id", String(selectedGameId));
+      if (selectedGameSlug) query.set("game_slug", selectedGameSlug);
+      query.set("ui_locale", currentUiLocale);
+      const data = await runWithProxyFallback(() =>
+        fetchJson(withDirectFallbackQuery(`/v2/marketplaces/platimarket/game-categories?${query.toString()}`))
+      );
+      platiGameCategoriesCatalog = Array.isArray(data.categories) ? data.categories : [];
+      const validIds = new Set(platiGameCategoriesCatalog.map((item) => Number(item.category_id)).filter((id) => Number.isFinite(id) && id >= 0));
+      selectedPlatiGameCategoryIds = new Set(
+        [...selectedPlatiGameCategoryIds].filter((id) => validIds.has(id))
+      );
+      updatePlatiGameCategoryOptions();
+      $("pmGameCategoriesSource").textContent = currentUiLocale === "en"
+        ? `Game categories source: ${data.source || "network"}`
+        : `Источник категорий игры: ${data.source || "network"}`;
     }
 
     function updateRunId(runId) {
@@ -2807,6 +3722,101 @@
     }
 
     function renderCategoryScope(item) {
+      const platiSectionById = new Map();
+      const platiGroupById = new Map();
+      const platiGameById = new Map();
+      const platiGameBySlug = new Map();
+      const platiGameCategoryById = new Map();
+      for (const section of getPlatiCatalogSectionsFlat()) {
+        const sectionId = Number(section.section_id);
+        if (Number.isFinite(sectionId)) {
+          platiSectionById.set(sectionId, section);
+        }
+      }
+      for (const root of platiCatalogTree || []) {
+        const groupId = Number(root.section_id);
+        if (Number.isFinite(groupId)) {
+          platiGroupById.set(groupId, root);
+        }
+      }
+      for (const game of platiGamesCatalog || []) {
+        const gameId = Number(game.game_id);
+        if (Number.isFinite(gameId)) {
+          platiGameById.set(gameId, game);
+        }
+        const slug = String(game.game_slug || "").trim();
+        if (slug) {
+          platiGameBySlug.set(slug, game);
+        }
+      }
+      for (const category of platiGameCategoriesCatalog || []) {
+        const categoryId = Number(category.category_id);
+        if (Number.isFinite(categoryId) && categoryId >= 0) {
+          platiGameCategoryById.set(categoryId, category);
+        }
+      }
+      const platiCategoryIds = Array.isArray(item.platimarket_category_ids) ? item.platimarket_category_ids : [];
+      const platiGameCategoryIds = Array.isArray(item.platimarket_game_category_ids) ? item.platimarket_game_category_ids : [];
+      const platiGroupId = item.platimarket_group_id;
+      const platiGameId = Number(item.platimarket_game_id);
+      const platiGameSlug = String(item.platimarket_game_slug || "").trim();
+      const platiGameName = String(item.platimarket_game_name || "").trim();
+      if (platiCategoryIds.length || platiGameCategoryIds.length || platiGroupId || platiGameId || platiGameSlug) {
+        const links = [];
+        const gameUrlBase = Number.isFinite(platiGameId) && platiGameId > 0
+          ? `https://plati.market/games/${escapeHtml(platiGameSlug || String(platiGameId))}/${escapeHtml(platiGameId)}/`
+          : (platiGameSlug ? `https://plati.market/games/${escapeHtml(platiGameSlug)}/` : null);
+        if (Number.isFinite(platiGameId) && platiGameId > 0) {
+          const game = platiGameById.get(platiGameId);
+          if (game) {
+            links.push(`<a href="${escapeHtml(game.game_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(game.game_name)}</a>`);
+          } else {
+            const slug = platiGameSlug || String(platiGameId);
+            const label = platiGameName || `${currentUiLocale === "en" ? "Game" : "Игра"} #${platiGameId}`;
+            links.push(`<a href="https://plati.market/games/${escapeHtml(slug)}/${escapeHtml(platiGameId)}/" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
+          }
+        } else if (platiGameSlug) {
+          const game = platiGameBySlug.get(platiGameSlug);
+          if (game) {
+            links.push(`<a href="${escapeHtml(game.game_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(game.game_name)}</a>`);
+          } else {
+            const label = platiGameName || `${currentUiLocale === "en" ? "Game" : "Игра"} ${platiGameSlug}`;
+            links.push(`<a href="https://plati.market/games/${escapeHtml(platiGameSlug)}/" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
+          }
+        }
+        for (const rawGameCategoryId of platiGameCategoryIds) {
+          const id = Number(rawGameCategoryId);
+          if (!Number.isFinite(id) || id < 0) continue;
+          const category = platiGameCategoryById.get(id);
+          const label = category?.category_name
+            ? category.category_name
+            : (id === 0
+              ? (currentUiLocale === "en" ? "All offers" : "Все предложения")
+              : `${currentUiLocale === "en" ? "Game category" : "Категория игры"} #${id}`);
+          const href = gameUrlBase ? `${gameUrlBase}?id_c=${id}` : "#";
+          links.push(`<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
+        }
+        for (const rawId of platiCategoryIds) {
+          const id = Number(rawId);
+          if (!Number.isFinite(id)) continue;
+          const section = platiSectionById.get(id);
+          if (section) {
+            links.push(`<a href="${escapeHtml(section.url || section.section_url || `https://plati.market/cat/${id}/`)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.full_name || section.section_name || `Раздел #${id}`)}</a>`);
+          } else {
+            links.push(`<a href="https://plati.market/cat/${id}/" target="_blank" rel="noopener noreferrer">${currentUiLocale === "en" ? "Section" : "Раздел"} #${id}</a>`);
+          }
+        }
+        if (!links.length && platiGroupId) {
+          const group = platiGroupById.get(Number(platiGroupId));
+          if (group) {
+            links.push(`<a href="${escapeHtml(group.url || group.group_url || `https://plati.market/cat/${platiGroupId}/`)}" target="_blank" rel="noopener noreferrer">${escapeHtml(group.title || group.group_name || `Раздел #${platiGroupId}`)}</a>`);
+          } else {
+            links.push(`<a href="https://plati.market/cat/${escapeHtml(platiGroupId)}/" target="_blank" rel="noopener noreferrer">${currentUiLocale === "en" ? "Group" : "Группа"} #${escapeHtml(platiGroupId)}</a>`);
+          }
+        }
+        return links.length ? links.join(", ") : "—";
+      }
+
       const playerokSectionBySlug = new Map();
       const playerokGameBySlug = new Map();
       for (const game of playerokCategoriesCatalog || []) {
@@ -3016,20 +4026,24 @@
 
     async function runAnalyze() {
       try {
-        const payload = buildPayload();
+        let payload = buildPayload();
         if (!payload.marketplaces.length) {
           setStatus(t("selectMarketplace"), "err");
           return;
         }
         setStatus(t("runStart"), "warn");
-        const data = await fetchJson("/v2/analyze", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json; charset=utf-8",
-            "Accept": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
+        const submitAnalyze = async () => {
+          payload = buildPayload();
+          return await fetchJson("/v2/analyze", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+              "Accept": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+        };
+        const data = await runWithProxyFallback(submitAnalyze);
         updateRunId(data.run_id);
         renderProgress(data);
         if (data.status === "queued" || data.status === "running") {
@@ -3050,7 +4064,8 @@
           window.history.replaceState({}, "", `/?run_id=${encodeURIComponent(data.run_id)}`);
         }
       } catch (err) {
-        setStatus(String(err), "err");
+        const message = err instanceof ApiError ? err.message : String(err);
+        setStatus(message, "err");
       }
     }
 
@@ -3181,6 +4196,125 @@
       $("pkIncludeDemand").addEventListener("change", (event) => {
         if (event.target.checked) $("pkIncludeReviews").checked = true;
       });
+      $("pmScopeMode").addEventListener("change", async () => {
+        try {
+          await setPlatiScopeMode(getPlatiScopeMode(), { ensureData: true });
+        } catch (_) {
+          // keep already loaded subset if lazy loading fails
+        }
+      });
+      $("pmGame").addEventListener("change", async () => {
+        selectedPlatiGameCategoryIds = new Set();
+        try {
+          await loadPlatiGameCategories();
+        } catch (_) {
+          platiGameCategoriesCatalog = [];
+          updatePlatiGameCategoryOptions();
+        }
+      });
+      $("pmGameCustom").addEventListener("change", async () => {
+        selectedPlatiGameCategoryIds = new Set();
+        try {
+          await loadPlatiGameCategories();
+        } catch (_) {
+          platiGameCategoriesCatalog = [];
+          updatePlatiGameCategoryOptions();
+        }
+      });
+      $("pmGameCategorySearch").addEventListener("input", updatePlatiGameCategoryOptions);
+      $("pmGameCategoryChecklist").addEventListener("change", () => {
+        syncPlatiGameCategorySelectionFromDom();
+        updatePlatiGameCategorySelectedCount();
+      });
+      $("pmGameCategorySelectVisible").addEventListener("click", () => {
+        const nodes = Array.from($("pmGameCategoryChecklist").querySelectorAll("input[type='checkbox'][data-game-category-id]"));
+        for (const node of nodes) {
+          const id = Number(node.getAttribute("data-game-category-id"));
+          if (!Number.isFinite(id) || id < 0) continue;
+          node.checked = true;
+          selectedPlatiGameCategoryIds.add(Math.floor(id));
+        }
+        updatePlatiGameCategorySelectedCount();
+      });
+      $("pmGameCategoryClearVisible").addEventListener("click", () => {
+        const nodes = Array.from($("pmGameCategoryChecklist").querySelectorAll("input[type='checkbox'][data-game-category-id]"));
+        for (const node of nodes) {
+          const id = Number(node.getAttribute("data-game-category-id"));
+          if (!Number.isFinite(id) || id < 0) continue;
+          node.checked = false;
+          selectedPlatiGameCategoryIds.delete(Math.floor(id));
+        }
+        updatePlatiGameCategorySelectedCount();
+      });
+      $("pmSectionSearch").addEventListener("input", updatePlatiSectionOptions);
+      $("pmSectionChecklist").addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        if (!target.matches("input[type='checkbox'][data-section-id]")) return;
+        const id = Number(target.getAttribute("data-section-id"));
+        if (!Number.isFinite(id) || id <= 0) return;
+        togglePlatiCategoryCascade(id, target.checked);
+        updatePlatiSectionOptions();
+      });
+      $("pmSectionChecklist").addEventListener("toggle", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLDetailsElement)) return;
+        if (!target.matches("details[data-tree-id]")) return;
+        const id = Number(target.getAttribute("data-tree-id"));
+        if (!Number.isFinite(id) || id <= 0) return;
+        if (target.open) platiTreeExpandedIds.add(Math.floor(id));
+        else platiTreeExpandedIds.delete(Math.floor(id));
+      }, true);
+      $("pmSectionSelectVisible").addEventListener("click", () => {
+        const nodes = Array.from($("pmSectionChecklist").querySelectorAll("input[type='checkbox'][data-section-id]"));
+        for (const node of nodes) {
+          const id = Number(node.getAttribute("data-section-id"));
+          if (!Number.isFinite(id) || id <= 0) continue;
+          node.checked = true;
+          togglePlatiCategoryCascade(Math.floor(id), true);
+        }
+        updatePlatiSectionOptions();
+      });
+      $("pmSectionClearVisible").addEventListener("click", () => {
+        const nodes = Array.from($("pmSectionChecklist").querySelectorAll("input[type='checkbox'][data-section-id]"));
+        for (const node of nodes) {
+          const id = Number(node.getAttribute("data-section-id"));
+          if (!Number.isFinite(id) || id <= 0) continue;
+          node.checked = false;
+          togglePlatiCategoryCascade(Math.floor(id), false);
+        }
+        updatePlatiSectionOptions();
+      });
+      $("pmIncludeDemand").addEventListener("change", (event) => {
+        if (event.target.checked) $("pmIncludeReviews").checked = true;
+      });
+      $("saveNetworkSettingsBtn").addEventListener("click", async () => {
+        try {
+          await saveNetworkSettings();
+        } catch (err) {
+          renderNetworkSettingsStatus(
+            `${currentUiLocale === "en" ? "Save failed" : "Ошибка сохранения"}: ${String(err)}`,
+            "err"
+          );
+        }
+      });
+      $("reloadNetworkSettingsBtn").addEventListener("click", async () => {
+        try {
+          await loadNetworkSettings();
+        } catch (err) {
+          renderNetworkSettingsStatus(
+            `${currentUiLocale === "en" ? "Load failed" : "Ошибка загрузки"}: ${String(err)}`,
+            "err"
+          );
+        }
+      });
+      $("proxyFallbackContinueBtn").addEventListener("click", () => closeProxyFallbackModal(true));
+      $("proxyFallbackCancelBtn").addEventListener("click", () => closeProxyFallbackModal(false));
+      $("proxyFallbackModal").addEventListener("click", (event) => {
+        if (event.target === $("proxyFallbackModal")) {
+          closeProxyFallbackModal(false);
+        }
+      });
       $("pkTabMainBtn").addEventListener("click", () => setPlayerOkTab("main"));
       $("pkTabSettingsBtn").addEventListener("click", () => setPlayerOkTab("settings"));
       $("pkAdvancedMode").addEventListener("change", syncPlayerOkAdvancedState);
@@ -3266,13 +4400,36 @@
         if (selectedRunId) runIdInput.value = selectedRunId;
         updateNavLinks();
 
-        await loadMarketplaces();
-        await loadFunPayCategories();
         try {
-          await loadPlayerOkCategories();
-        } catch (_) {
-          playerokCategoriesCatalog = [];
+          await loadNetworkSettings();
+        } catch (err) {
+          renderNetworkSettingsStatus(
+            `${currentUiLocale === "en" ? "Settings load failed" : "Ошибка загрузки настроек"}: ${err instanceof ApiError ? err.message : String(err)}`,
+            "err"
+          );
         }
+        await loadMarketplaces();
+
+        const catalogTasks = [];
+        if (isFunPayRoute) {
+          catalogTasks.push(loadFunPayCategories());
+        } else if (isPlayerOkRoute) {
+          catalogTasks.push(loadPlayerOkCategories());
+        } else if (isPlatiRoute) {
+          catalogTasks.push(loadPlatiCategories());
+        }
+
+        await Promise.allSettled(catalogTasks);
+
+        if (isPlatiRoute) {
+          try {
+            await setPlatiScopeMode(getPlatiScopeMode(), { ensureData: true });
+          } catch (_) {
+            platiGameCategoriesCatalog = [];
+            updatePlatiGameCategoryOptions();
+          }
+        }
+
         await renderHistory();
 
         if (selectedRunId) {
@@ -3281,7 +4438,7 @@
           setStatus(currentUiLocale === "en" ? "Ready for a new run." : "Готово к запуску нового анализа.", "ok");
         }
       } catch (err) {
-        setStatus(String(err), "err");
+        setStatus(err instanceof ApiError ? err.message : String(err), "err");
       }
     }
 

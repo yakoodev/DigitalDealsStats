@@ -16,12 +16,18 @@ from app.schemas.v2 import (
     MarketplaceOffersResponseDTO,
     MarketplaceRunResultDTO,
     MarketplacesCatalogResponseDTO,
+    NetworkSettingsDTO,
     OverviewV2DTO,
+    PlatiCatalogTreeResponseDTO,
+    PlatiCategoriesResponseDTO,
+    PlatiGameCategoriesResponseDTO,
+    PlatiGamesResponseDTO,
     PlayerOkCategoriesResponseDTO,
     V2ExecutionMode,
 )
 from app.services.global_analyzer import GlobalAnalyzerService
 from app.services.i18n import tr
+from app.services.proxy import ProxyRequiredError
 from app.services.text_utils import repair_mojibake_cyrillic
 
 router = APIRouter(prefix="/v2", tags=["v2"])
@@ -34,6 +40,14 @@ def _make_service(db: Session) -> GlobalAnalyzerService:
 
 def _normalize_marketplace_error(exc: Exception) -> HTTPException:
     message = str(exc)
+    if isinstance(exc, ProxyRequiredError) or message.startswith("proxy_required"):
+        return HTTPException(
+            status_code=400,
+            detail={
+                "code": "proxy_required",
+                "message": "Прокси не настроены. Добавьте прокси в настройках сети или подтвердите запуск без прокси.",
+            },
+        )
     if message.startswith("marketplace_not_available:"):
         parts = message.split(":", 2)
         slug = parts[1] if len(parts) > 1 else "unknown"
@@ -60,14 +74,30 @@ def analyze_v2(
     if payload.common_filters.query == "":
         needs_funpay_scope = any(item.value == "funpay" for item in payload.marketplaces)
         needs_playerok_scope = any(item.value == "playerok" for item in payload.marketplaces)
+        needs_plati_scope = any(item.value == "platimarket" for item in payload.marketplaces)
         funpay_filters = payload.marketplace_filters.funpay
         playerok_filters = payload.marketplace_filters.playerok
+        plati_filters = payload.marketplace_filters.platimarket
         if needs_funpay_scope and (
             funpay_filters is None
             or (
                 funpay_filters.category_game_id is None
                 and funpay_filters.category_id is None
                 and len(funpay_filters.category_ids) == 0
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=tr(ui_locale, "validation.empty_query_requires_scope"),
+            )
+        if needs_plati_scope and (
+            plati_filters is None
+            or (
+                plati_filters.category_game_id is None
+                and not (plati_filters.category_game_slug or "").strip()
+                and
+                plati_filters.category_group_id is None
+                and len(plati_filters.category_ids) == 0
             )
         ):
             raise HTTPException(
@@ -214,29 +244,186 @@ def marketplaces_catalog(db: Session = Depends(get_db)) -> MarketplacesCatalogRe
 
 
 @router.get("/marketplaces/funpay/categories", response_model=CategoriesResponseDTO)
-def funpay_categories_v2(db: Session = Depends(get_db)) -> CategoriesResponseDTO:
+def funpay_categories_v2(
+    allow_direct_fallback: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> CategoriesResponseDTO:
     service = _make_service(db)
     try:
-        games = service.funpay_categories()
+        games = service.funpay_categories(allow_direct_fallback=allow_direct_fallback)
         return CategoriesResponseDTO(
             generated_at=datetime.now(UTC),
             games=games,
         )
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
+        normalized = _normalize_marketplace_error(exc)
+        if normalized.status_code != 500:
+            raise normalized from exc
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий FunPay: {exc}") from exc
 
 
 @router.get("/marketplaces/playerok/categories", response_model=PlayerOkCategoriesResponseDTO)
 def playerok_categories_v2(
     game_slug: str | None = Query(default=None, min_length=1),
+    allow_direct_fallback: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> PlayerOkCategoriesResponseDTO:
     service = _make_service(db)
     try:
-        games = service.playerok_categories(game_slug=game_slug)
+        games_payload = service.playerok_categories(
+            game_slug=game_slug,
+            allow_direct_fallback=allow_direct_fallback,
+            force_refresh=force_refresh,
+        )
+        games, source = games_payload if isinstance(games_payload, tuple) else (games_payload, "network")
         return PlayerOkCategoriesResponseDTO(
             generated_at=datetime.now(UTC),
+            source=source,
             games=games,
         )
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
+        normalized = _normalize_marketplace_error(exc)
+        if normalized.status_code != 500:
+            raise normalized from exc
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий PlayerOK: {exc}") from exc
+
+
+@router.get("/marketplaces/platimarket/categories", response_model=PlatiCategoriesResponseDTO)
+def platimarket_categories_v2(
+    allow_direct_fallback: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PlatiCategoriesResponseDTO:
+    service = _make_service(db)
+    try:
+        groups_payload = service.platimarket_categories(
+            allow_direct_fallback=allow_direct_fallback,
+            force_refresh=force_refresh,
+        )
+        groups, source = groups_payload if isinstance(groups_payload, tuple) else (groups_payload, "network")
+        return PlatiCategoriesResponseDTO(
+            generated_at=datetime.now(UTC),
+            source=source,
+            groups=groups,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        normalized = _normalize_marketplace_error(exc)
+        if normalized.status_code != 500:
+            raise normalized from exc
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий Plati.Market: {exc}") from exc
+
+
+@router.get("/marketplaces/platimarket/catalog-tree", response_model=PlatiCatalogTreeResponseDTO)
+def platimarket_catalog_tree_v2(
+    allow_direct_fallback: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PlatiCatalogTreeResponseDTO:
+    service = _make_service(db)
+    try:
+        nodes_payload = service.platimarket_catalog_tree(
+            allow_direct_fallback=allow_direct_fallback,
+            force_refresh=force_refresh,
+        )
+        nodes, source = nodes_payload if isinstance(nodes_payload, tuple) else (nodes_payload, "network")
+        return PlatiCatalogTreeResponseDTO(
+            generated_at=datetime.now(UTC),
+            source=source,
+            nodes=nodes,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        normalized = _normalize_marketplace_error(exc)
+        if normalized.status_code != 500:
+            raise normalized from exc
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки дерева каталога Plati.Market: {exc}") from exc
+
+
+@router.get("/marketplaces/platimarket/games", response_model=PlatiGamesResponseDTO)
+def platimarket_games_v2(
+    allow_direct_fallback: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PlatiGamesResponseDTO:
+    service = _make_service(db)
+    try:
+        games_payload = service.platimarket_games(
+            allow_direct_fallback=allow_direct_fallback,
+            force_refresh=force_refresh,
+        )
+        games, source = games_payload if isinstance(games_payload, tuple) else (games_payload, "network")
+        return PlatiGamesResponseDTO(
+            generated_at=datetime.now(UTC),
+            source=source,
+            games=games,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        normalized = _normalize_marketplace_error(exc)
+        if normalized.status_code != 500:
+            raise normalized from exc
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки игр Plati.Market: {exc}") from exc
+
+
+@router.get("/marketplaces/platimarket/game-categories", response_model=PlatiGameCategoriesResponseDTO)
+def platimarket_game_categories_v2(
+    game_id: int | None = Query(default=None, ge=1),
+    game_slug: str | None = Query(default=None, min_length=1),
+    ui_locale: str = Query(default="ru"),
+    allow_direct_fallback: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> PlatiGameCategoriesResponseDTO:
+    service = _make_service(db)
+    try:
+        resolved_game_id, resolved_game_slug, categories = service.platimarket_game_categories(
+            game_id=game_id,
+            game_slug=game_slug,
+            ui_locale=ui_locale,
+            allow_direct_fallback=allow_direct_fallback,
+            force_refresh=force_refresh,
+        )
+        return PlatiGameCategoriesResponseDTO(
+            generated_at=datetime.now(UTC),
+            source="network",
+            game_id=resolved_game_id,
+            game_slug=resolved_game_slug,
+            categories=categories,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        normalized = _normalize_marketplace_error(exc)
+        if normalized.status_code != 500:
+            raise normalized from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка загрузки категорий игры Plati.Market: {exc}",
+        ) from exc
+
+
+@router.get("/settings/network", response_model=NetworkSettingsDTO)
+def get_network_settings_v2(db: Session = Depends(get_db)) -> NetworkSettingsDTO:
+    service = _make_service(db)
+    try:
+        return service.get_network_settings()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Ошибка чтения сетевых настроек: {exc}") from exc
+
+
+@router.put("/settings/network", response_model=NetworkSettingsDTO)
+def put_network_settings_v2(payload: NetworkSettingsDTO, db: Session = Depends(get_db)) -> NetworkSettingsDTO:
+    service = _make_service(db)
+    try:
+        return service.update_network_settings(payload)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Ошибка сохранения сетевых настроек: {exc}") from exc

@@ -4,6 +4,7 @@ from app.models.entities import (
     AnalysisRequest,
     OfferSnapshot,
     ReviewSnapshot,
+    RuntimeNetworkSettings,
     SectionCoverage,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "AnalysisRequest",
     "OfferSnapshot",
     "ReviewSnapshot",
+    "RuntimeNetworkSettings",
     "SectionCoverage",
 ]
