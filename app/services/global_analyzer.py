@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from datetime import UTC, datetime
 
 from sqlalchemy import desc, select
@@ -314,7 +313,7 @@ class GlobalAnalyzerService:
     def _mask_sensitive_marketplace_filters(cls, payload: dict) -> None:
         if not isinstance(payload, dict):
             return
-        for section_key in ("funpay", "playerok", "platimarket"):
+        for section_key in ("funpay", "playerok", "ggsell", "platimarket"):
             section = payload.get(section_key)
             if isinstance(section, dict):
                 mask_proxy_payload(section)
@@ -740,6 +739,11 @@ class GlobalAnalyzerService:
                 if isinstance(marketplace_filters, dict)
                 else None
             )
+            ggsell_filters = (
+                marketplace_filters.get("ggsell")
+                if isinstance(marketplace_filters, dict)
+                else None
+            )
             platimarket_filters = (
                 marketplace_filters.get("platimarket")
                 if isinstance(marketplace_filters, dict)
@@ -809,6 +813,20 @@ class GlobalAnalyzerService:
                         if isinstance(playerok_filters, dict)
                         else []
                     ),
+                    ggsell_type_slug=(
+                        ggsell_filters.get("category_type_slug")
+                        if isinstance(ggsell_filters, dict)
+                        else None
+                    ),
+                    ggsell_category_slugs=(
+                        [
+                            str(item).strip()
+                            for item in (ggsell_filters.get("category_slugs") or [])
+                            if str(item).strip()
+                        ]
+                        if isinstance(ggsell_filters, dict)
+                        else []
+                    ),
                     platimarket_game_id=(
                         platimarket_filters.get("category_game_id")
                         if isinstance(platimarket_filters, dict)
@@ -875,6 +893,16 @@ class GlobalAnalyzerService:
             force_refresh=force_refresh,
             with_source=True,
         )
+
+    def ggsell_categories(
+        self,
+        *,
+        allow_direct_fallback: bool = False,
+        force_refresh: bool = False,
+    ):
+        provider = self.registry.provider_for(MarketplaceSlug.ggsell)
+        filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
+        return provider.categories(common_filters=filters, force_refresh=force_refresh, with_source=True)
 
     def platimarket_categories(
         self,

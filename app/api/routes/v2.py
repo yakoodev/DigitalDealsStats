@@ -12,6 +12,7 @@ from app.schemas.analyze import CategoriesResponseDTO
 from app.schemas.v2 import (
     AnalyzeV2EnvelopeDTO,
     AnalyzeV2RequestDTO,
+    GgSellCategoriesResponseDTO,
     HistoryV2ResponseDTO,
     MarketplaceOffersResponseDTO,
     MarketplaceRunResultDTO,
@@ -74,9 +75,11 @@ def analyze_v2(
     if payload.common_filters.query == "":
         needs_funpay_scope = any(item.value == "funpay" for item in payload.marketplaces)
         needs_playerok_scope = any(item.value == "playerok" for item in payload.marketplaces)
+        needs_ggsell_scope = any(item.value == "ggsell" for item in payload.marketplaces)
         needs_plati_scope = any(item.value == "platimarket" for item in payload.marketplaces)
         funpay_filters = payload.marketplace_filters.funpay
         playerok_filters = payload.marketplace_filters.playerok
+        ggsell_filters = payload.marketplace_filters.ggsell
         plati_filters = payload.marketplace_filters.platimarket
         if needs_funpay_scope and (
             funpay_filters is None
@@ -109,6 +112,17 @@ def analyze_v2(
             or (
                 not playerok_filters.category_game_slug
                 and len(playerok_filters.category_slugs) == 0
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=tr(ui_locale, "validation.empty_query_requires_scope"),
+            )
+        if needs_ggsell_scope and (
+            ggsell_filters is None
+            or (
+                not (ggsell_filters.category_type_slug or "").strip()
+                and len(ggsell_filters.category_slugs) == 0
             )
         ):
             raise HTTPException(
@@ -291,6 +305,53 @@ def playerok_categories_v2(
         if normalized.status_code != 500:
             raise normalized from exc
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий PlayerOK: {exc}") from exc
+
+
+@router.get("/marketplaces/ggsell/categories", response_model=GgSellCategoriesResponseDTO)
+def ggsell_categories_v2(
+    type_slug: str | None = Query(default=None, min_length=1),
+    search: str | None = Query(default=None, min_length=1),
+    allow_direct_fallback: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> GgSellCategoriesResponseDTO:
+    service = _make_service(db)
+    try:
+        payload = service.ggsell_categories(
+            allow_direct_fallback=allow_direct_fallback,
+            force_refresh=force_refresh,
+        )
+        (types, categories), source = payload if isinstance(payload, tuple) else (payload, "network")
+        scoped = categories
+        if type_slug:
+            normalized = str(type_slug).strip().lower()
+            scoped = [
+                item
+                for item in scoped
+                if str(item.type_slug or "").strip().lower() == normalized
+            ]
+        if search:
+            term = str(search).strip().lower()
+            scoped = [
+                item
+                for item in scoped
+                if term in str(item.category_name).lower()
+                or term in str(item.category_slug).lower()
+                or term in str(item.type_name or "").lower()
+            ]
+        return GgSellCategoriesResponseDTO(
+            generated_at=datetime.now(UTC),
+            source=source,
+            types=types,
+            categories=scoped,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        normalized = _normalize_marketplace_error(exc)
+        if normalized.status_code != 500:
+            raise normalized from exc
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий GGSell: {exc}") from exc
 
 
 @router.get("/marketplaces/platimarket/categories", response_model=PlatiCategoriesResponseDTO)

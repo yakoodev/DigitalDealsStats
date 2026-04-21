@@ -11,27 +11,27 @@ def test_v2_marketplaces_endpoint_available() -> None:
     slugs = {item["slug"]: item for item in payload["items"]}
     assert slugs["funpay"]["enabled"] is True
     assert slugs["playerok"]["enabled"] is True
+    assert slugs["ggsell"]["enabled"] is True
     assert slugs["platimarket"]["enabled"] is True
 
 
-def test_v2_analyze_rejects_unavailable_marketplace() -> None:
+def test_v2_empty_query_requires_scope_for_ggsell() -> None:
     client = TestClient(app)
     response = client.post(
         "/v2/analyze",
         json={
             "marketplaces": ["ggsell"],
             "common_filters": {
-                "query": "test",
+                "query": "",
                 "currency": "RUB",
+                "ui_locale": "ru",
+                "allow_direct_fallback": True,
                 "execution": "sync",
             },
-            "marketplace_filters": {},
+            "marketplace_filters": {"ggsell": {}},
         },
     )
     assert response.status_code == 400
-    detail = response.json().get("detail", {})
-    assert detail.get("code") == "marketplace_not_available"
-    assert detail.get("marketplace") == "ggsell"
 
 
 def test_v2_empty_query_requires_scope_for_playerok() -> None:
@@ -160,6 +160,22 @@ def test_v2_catalog_returns_proxy_required_without_pool() -> None:
         },
     )
     response = client.get("/v2/marketplaces/platimarket/catalog-tree")
+    assert response.status_code == 400
+    detail = response.json().get("detail", {})
+    assert detail.get("code") == "proxy_required"
+
+
+def test_v2_ggsell_categories_returns_proxy_required_without_pool() -> None:
+    client = TestClient(app)
+    client.put(
+        "/v2/settings/network",
+        json={
+            "datacenter_proxies": [],
+            "residential_proxies": [],
+            "mobile_proxies": [],
+        },
+    )
+    response = client.get("/v2/marketplaces/ggsell/categories")
     assert response.status_code == 400
     detail = response.json().get("detail", {})
     assert detail.get("code") == "proxy_required"

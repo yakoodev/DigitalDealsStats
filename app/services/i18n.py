@@ -10,6 +10,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Для пустого запроса укажите область сканирования: "
             "для FunPay выберите category_game_id/category_id/category_ids, "
             "для PlayerOK — category_game_slug/category_slugs, "
+            "для GGSell — category_type_slug/category_slugs, "
             "для Plati.Market — category_game_id/category_group_id/category_ids."
         ),
         "progress.global.validate": "Проверяю доступность выбранных площадок.",
@@ -92,6 +93,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "warning.playerok.graphql_failed_count": (
             "GraphQL дал ошибки в {count} местах; проверьте прокси/заголовки."
         ),
+        "warning.ggsell.type_not_found": "Выбранный тип каталога GGSell не найден.",
+        "warning.ggsell.categories_not_found": "Не удалось загрузить данные для {count} выбранных категорий GGSell.",
+        "warning.ggsell.category_failed": "Не удалось обработать категорию GGSell: {section}.",
+        "warning.ggsell.categories_failed_count": "Сбор завершился с ошибками по категориям GGSell: {count}.",
         "warning.plati.group_not_found": "Выбранная группа Plati.Market не найдена в каталоге.",
         "warning.plati.game_not_found": "Выбранная игра Plati.Market не найдена в каталоге.",
         "warning.plati.game_categories_not_found": "Часть выбранных категорий выбранной игры не найдена.",
@@ -106,6 +111,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "For an empty query you must provide scan scope: "
             "FunPay requires category_game_id/category_id/category_ids, "
             "PlayerOK requires category_game_slug/category_slugs, "
+            "GGSell requires category_type_slug/category_slugs, "
             "Plati.Market requires category_game_id/category_group_id/category_ids."
         ),
         "progress.global.validate": "Checking selected marketplace availability.",
@@ -185,6 +191,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "warning.playerok.graphql_failed_count": (
             "GraphQL failed in {count} places; check proxies/headers."
         ),
+        "warning.ggsell.type_not_found": "Selected GGSell category type was not found.",
+        "warning.ggsell.categories_not_found": "Failed to resolve {count} selected GGSell categories.",
+        "warning.ggsell.category_failed": "Failed to process GGSell category: {section}.",
+        "warning.ggsell.categories_failed_count": "GGSell category parsing failed for {count} categories.",
         "warning.plati.group_not_found": "Selected Plati.Market group was not found in catalog.",
         "warning.plati.game_not_found": "Selected Plati.Market game was not found in catalog.",
         "warning.plati.game_categories_not_found": "Some selected categories for the chosen game were not found.",
