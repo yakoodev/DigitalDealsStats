@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from redis import Redis
 from rq import Queue
 from sqlalchemy.orm import Session
@@ -33,6 +33,44 @@ from app.services.text_utils import repair_mojibake_cyrillic
 
 router = APIRouter(prefix="/v2", tags=["v2"])
 
+ANALYZE_REQUEST_EXAMPLE = {
+    "marketplaces": ["funpay", "ggsell"],
+    "common_filters": {
+        "query": "pragmata аренда",
+        "currency": "RUB",
+        "ui_locale": "ru",
+        "force_refresh": False,
+        "allow_direct_fallback": False,
+        "execution": "auto",
+    },
+    "marketplace_filters": {
+        "funpay": {
+            "content_locale": "auto",
+            "category_ids": [2893],
+            "options": {
+                "profile": "balanced",
+                "include_reviews": True,
+                "include_demand_index": True,
+                "section_limit": 80,
+                "seller_limit": 3,
+                "review_pages_per_seller": 3,
+                "history_points_limit": 60,
+            },
+        },
+        "ggsell": {
+            "category_type_slug": "games",
+            "category_slugs": ["pragmata"],
+            "use_type_scope": False,
+            "options": {
+                "profile": "safe",
+                "include_reviews": False,
+                "include_demand_index": False,
+                "section_limit": 10,
+            },
+        },
+    },
+}
+
 
 def _make_service(db: Session) -> GlobalAnalyzerService:
     settings = get_settings()
@@ -64,9 +102,30 @@ def _normalize_marketplace_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=f"Ошибка анализа: {exc}")
 
 
-@router.post("/analyze", response_model=AnalyzeV2EnvelopeDTO)
+@router.post(
+    "/analyze",
+    response_model=AnalyzeV2EnvelopeDTO,
+    tags=["Анализ"],
+    summary="Запустить v2 анализ",
+    description=(
+        "Запускает мульти-площадочный анализ. В режиме `execution=auto` "
+        "сервис сам решает: выполнять синхронно или ставить в очередь."
+    ),
+)
 def analyze_v2(
-    payload: AnalyzeV2RequestDTO,
+    payload: AnalyzeV2RequestDTO = Body(
+        ...,
+        description=(
+            "Конфигурация запуска: список площадок, общие фильтры и "
+            "площадко-специфичные фильтры."
+        ),
+        examples={
+            "base": {
+                "summary": "Пример запуска FunPay + GGSell",
+                "value": ANALYZE_REQUEST_EXAMPLE,
+            }
+        },
+    ),
     db: Session = Depends(get_db),
 ) -> AnalyzeV2EnvelopeDTO:
     settings = get_settings()
@@ -165,7 +224,12 @@ def analyze_v2(
         raise _normalize_marketplace_error(exc) from exc
 
 
-@router.get("/analyze/{run_id}", response_model=AnalyzeV2EnvelopeDTO)
+@router.get(
+    "/analyze/{run_id}",
+    response_model=AnalyzeV2EnvelopeDTO,
+    tags=["Результаты"],
+    summary="Получить статус запуска",
+)
 def analyze_v2_status(run_id: str, db: Session = Depends(get_db)) -> AnalyzeV2EnvelopeDTO:
     service = _make_service(db)
     try:
@@ -176,7 +240,12 @@ def analyze_v2_status(run_id: str, db: Session = Depends(get_db)) -> AnalyzeV2En
         raise HTTPException(status_code=500, detail=f"Ошибка получения статуса: {exc}") from exc
 
 
-@router.get("/analyze/{run_id}/overview", response_model=OverviewV2DTO)
+@router.get(
+    "/analyze/{run_id}/overview",
+    response_model=OverviewV2DTO,
+    tags=["Результаты"],
+    summary="Получить pooled overview запуска",
+)
 def analyze_v2_overview(run_id: str, db: Session = Depends(get_db)) -> OverviewV2DTO:
     service = _make_service(db)
     try:
@@ -187,7 +256,12 @@ def analyze_v2_overview(run_id: str, db: Session = Depends(get_db)) -> OverviewV
         raise HTTPException(status_code=500, detail=f"Ошибка получения overview: {exc}") from exc
 
 
-@router.get("/analyze/{run_id}/marketplaces/{marketplace}", response_model=MarketplaceRunResultDTO)
+@router.get(
+    "/analyze/{run_id}/marketplaces/{marketplace}",
+    response_model=MarketplaceRunResultDTO,
+    tags=["Результаты"],
+    summary="Получить детальный результат площадки",
+)
 def analyze_v2_marketplace(
     run_id: str,
     marketplace: str,
@@ -205,6 +279,8 @@ def analyze_v2_marketplace(
 @router.get(
     "/analyze/{run_id}/marketplaces/{marketplace}/offers",
     response_model=MarketplaceOffersResponseDTO,
+    tags=["Результаты"],
+    summary="Получить срез офферов площадки",
 )
 def analyze_v2_marketplace_offers(
     run_id: str,
@@ -239,7 +315,12 @@ def analyze_v2_marketplace_offers(
         raise HTTPException(status_code=500, detail=f"Ошибка получения офферов площадки: {exc}") from exc
 
 
-@router.get("/history", response_model=HistoryV2ResponseDTO)
+@router.get(
+    "/history",
+    response_model=HistoryV2ResponseDTO,
+    tags=["Результаты"],
+    summary="История запусков v2",
+)
 def history_v2(limit: int = 100, db: Session = Depends(get_db)) -> HistoryV2ResponseDTO:
     service = _make_service(db)
     try:
@@ -248,7 +329,12 @@ def history_v2(limit: int = 100, db: Session = Depends(get_db)) -> HistoryV2Resp
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки истории: {exc}") from exc
 
 
-@router.get("/marketplaces", response_model=MarketplacesCatalogResponseDTO)
+@router.get(
+    "/marketplaces",
+    response_model=MarketplacesCatalogResponseDTO,
+    tags=["Каталоги"],
+    summary="Список площадок и их статус",
+)
 def marketplaces_catalog(db: Session = Depends(get_db)) -> MarketplacesCatalogResponseDTO:
     service = _make_service(db)
     try:
@@ -257,7 +343,12 @@ def marketplaces_catalog(db: Session = Depends(get_db)) -> MarketplacesCatalogRe
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки площадок: {exc}") from exc
 
 
-@router.get("/marketplaces/funpay/categories", response_model=CategoriesResponseDTO)
+@router.get(
+    "/marketplaces/funpay/categories",
+    response_model=CategoriesResponseDTO,
+    tags=["Каталоги"],
+    summary="Категории FunPay",
+)
 def funpay_categories_v2(
     allow_direct_fallback: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -278,7 +369,12 @@ def funpay_categories_v2(
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий FunPay: {exc}") from exc
 
 
-@router.get("/marketplaces/playerok/categories", response_model=PlayerOkCategoriesResponseDTO)
+@router.get(
+    "/marketplaces/playerok/categories",
+    response_model=PlayerOkCategoriesResponseDTO,
+    tags=["Каталоги"],
+    summary="Каталог игр и разделов PlayerOK",
+)
 def playerok_categories_v2(
     game_slug: str | None = Query(default=None, min_length=1),
     allow_direct_fallback: bool = Query(default=False),
@@ -307,7 +403,12 @@ def playerok_categories_v2(
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий PlayerOK: {exc}") from exc
 
 
-@router.get("/marketplaces/ggsell/categories", response_model=GgSellCategoriesResponseDTO)
+@router.get(
+    "/marketplaces/ggsell/categories",
+    response_model=GgSellCategoriesResponseDTO,
+    tags=["Каталоги"],
+    summary="Каталог типов и категорий GGSell",
+)
 def ggsell_categories_v2(
     type_slug: str | None = Query(default=None, min_length=1),
     search: str | None = Query(default=None, min_length=1),
@@ -354,7 +455,12 @@ def ggsell_categories_v2(
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий GGSell: {exc}") from exc
 
 
-@router.get("/marketplaces/platimarket/categories", response_model=PlatiCategoriesResponseDTO)
+@router.get(
+    "/marketplaces/platimarket/categories",
+    response_model=PlatiCategoriesResponseDTO,
+    tags=["Каталоги"],
+    summary="Каталог групп и разделов Plati.Market",
+)
 def platimarket_categories_v2(
     allow_direct_fallback: bool = Query(default=False),
     force_refresh: bool = Query(default=False),
@@ -381,7 +487,12 @@ def platimarket_categories_v2(
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки категорий Plati.Market: {exc}") from exc
 
 
-@router.get("/marketplaces/platimarket/catalog-tree", response_model=PlatiCatalogTreeResponseDTO)
+@router.get(
+    "/marketplaces/platimarket/catalog-tree",
+    response_model=PlatiCatalogTreeResponseDTO,
+    tags=["Каталоги"],
+    summary="Дерево каталога Plati.Market",
+)
 def platimarket_catalog_tree_v2(
     allow_direct_fallback: bool = Query(default=False),
     force_refresh: bool = Query(default=False),
@@ -408,7 +519,12 @@ def platimarket_catalog_tree_v2(
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки дерева каталога Plati.Market: {exc}") from exc
 
 
-@router.get("/marketplaces/platimarket/games", response_model=PlatiGamesResponseDTO)
+@router.get(
+    "/marketplaces/platimarket/games",
+    response_model=PlatiGamesResponseDTO,
+    tags=["Каталоги"],
+    summary="Список игр Plati.Market",
+)
 def platimarket_games_v2(
     allow_direct_fallback: bool = Query(default=False),
     force_refresh: bool = Query(default=False),
@@ -435,7 +551,12 @@ def platimarket_games_v2(
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки игр Plati.Market: {exc}") from exc
 
 
-@router.get("/marketplaces/platimarket/game-categories", response_model=PlatiGameCategoriesResponseDTO)
+@router.get(
+    "/marketplaces/platimarket/game-categories",
+    response_model=PlatiGameCategoriesResponseDTO,
+    tags=["Каталоги"],
+    summary="Категории выбранной игры Plati.Market",
+)
 def platimarket_game_categories_v2(
     game_id: int | None = Query(default=None, ge=1),
     game_slug: str | None = Query(default=None, min_length=1),
@@ -472,7 +593,12 @@ def platimarket_game_categories_v2(
         ) from exc
 
 
-@router.get("/settings/network", response_model=NetworkSettingsDTO)
+@router.get(
+    "/settings/network",
+    response_model=NetworkSettingsDTO,
+    tags=["Настройки"],
+    summary="Получить сетевые настройки",
+)
 def get_network_settings_v2(db: Session = Depends(get_db)) -> NetworkSettingsDTO:
     service = _make_service(db)
     try:
@@ -481,7 +607,12 @@ def get_network_settings_v2(db: Session = Depends(get_db)) -> NetworkSettingsDTO
         raise HTTPException(status_code=500, detail=f"Ошибка чтения сетевых настроек: {exc}") from exc
 
 
-@router.put("/settings/network", response_model=NetworkSettingsDTO)
+@router.put(
+    "/settings/network",
+    response_model=NetworkSettingsDTO,
+    tags=["Настройки"],
+    summary="Сохранить сетевые настройки",
+)
 def put_network_settings_v2(payload: NetworkSettingsDTO, db: Session = Depends(get_db)) -> NetworkSettingsDTO:
     service = _make_service(db)
     try:

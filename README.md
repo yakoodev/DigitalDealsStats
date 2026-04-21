@@ -1,49 +1,22 @@
-# MarketStat v2 (Multi-Marketplace Framework)
+# MarketStat v2
 
-Каркас мульти-площадочной аналитики:
+Мульти-площадочный аналитический сервис для цифровых товаров.
 
-- общий запуск через `POST /v2/analyze`;
-- провайдеры площадок (`marketplace providers`);
-- единый формат `Core + raw` для сравнения между площадками;
-- отдельные страницы UI: общий overview и детализация по площадке.
+Поддерживаемые провайдеры:
+- `funpay`
+- `playerok`
+- `ggsell`
+- `platimarket`
 
-Сейчас реализованы `funpay` и `playerok`; `ggsell` и `platimarket` остаются в каталоге как disabled.
+API строится вокруг единого запуска анализа (`/v2/analyze`) и нормализованной модели данных (`Core + raw`) для сравнения площадок.
 
-## Что уже работает
+## Swagger / OpenAPI
 
-- `MarketplaceProvider` контракт + `MarketplaceRegistry`.
-- `FunPayProvider`, который использует существующий парсер и возвращает:
-  - `summary`,
-  - `core` (normalized offers/sellers/reviews),
-  - `raw` (полный legacy payload FunPay).
-- `PlayerOkProvider`:
-  - GraphQL-first сбор (`/graphql`) через обычный HTTP,
-  - HTML degrade как fallback (без browser emulation),
-  - lower-bound диагностика покрытия,
-  - анализ спроса по отзывам с матчингом `игра + цена`,
-  - кэш результатов на 24 часа.
-- `GlobalAnalyzerService`:
-  - запуск анализа по выбранным площадкам,
-  - расчет pooled overview + comparison + averages,
-  - хранение запусков и истории.
-- Новый API `/v2/*`:
-  - `POST /v2/analyze`
-  - `GET /v2/analyze/{run_id}`
-  - `GET /v2/analyze/{run_id}/overview`
-  - `GET /v2/analyze/{run_id}/marketplaces/{marketplace}`
-  - `GET /v2/analyze/{run_id}/marketplaces/{marketplace}/offers`
-  - `GET /v2/history`
-  - `GET /v2/marketplaces`
-  - `GET /v2/marketplaces/funpay/categories`
-  - `GET /v2/marketplaces/playerok/categories`
-- UI:
-  - `/` — overview общего анализа,
-  - `/analysis/funpay` — детальная страница FunPay,
-  - `/analysis/playerok` — детальная страница PlayerOK,
-  - общий выбор площадок + общий пул прокси в форме запуска,
-  - история запусков с подпунктами по площадкам.
+- Swagger UI (основной): [http://localhost:8000/docs](http://localhost:8000/docs)
+- Swagger UI (алиас): [http://localhost:8000/swagger](http://localhost:8000/swagger)
+- OpenAPI JSON: [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
 
-## Быстрый старт
+## Быстрый старт (локально)
 
 ```bash
 python -m venv .venv
@@ -59,12 +32,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 curl http://localhost:8000/healthz
 ```
 
-UI:
-
-```text
-http://localhost:8000/
-```
-
 ## Docker
 
 ```bash
@@ -78,57 +45,63 @@ curl http://localhost:8000/healthz
 curl http://localhost:8000/v2/marketplaces
 ```
 
-## Пример запроса
+## Основной flow
+
+1. `POST /v2/analyze` — запуск анализа.
+2. `GET /v2/analyze/{run_id}` — статус.
+3. `GET /v2/analyze/{run_id}/overview` — pooled сводка.
+4. `GET /v2/analyze/{run_id}/marketplaces/{marketplace}` — детали площадки.
+5. `GET /v2/analyze/{run_id}/marketplaces/{marketplace}/offers` — полный срез офферов с фильтрами.
+
+## Минимальный пример запроса
 
 ```json
 {
-  "marketplaces": ["funpay", "playerok"],
+  "marketplaces": ["funpay", "ggsell"],
   "common_filters": {
-    "query": "project zomboid аренда",
+    "query": "pragmata аренда",
     "currency": "RUB",
+    "ui_locale": "ru",
     "force_refresh": false,
-    "execution": "auto",
-    "datacenter_proxies": [],
-    "residential_proxies": [],
-    "mobile_proxies": []
+    "allow_direct_fallback": false,
+    "execution": "auto"
   },
   "marketplace_filters": {
     "funpay": {
       "content_locale": "auto",
-      "category_game_id": null,
-      "category_id": null,
-      "options": {
-        "profile": "balanced",
-        "include_reviews": false,
-        "include_demand_index": false,
-        "include_fallback_scan": true,
-        "section_limit": 80,
-        "seller_limit": 40,
-        "review_pages_per_seller": 4,
-        "history_points_limit": 60
-      }
-    },
-    "playerok": {
-      "category_game_slug": "project-zomboid",
-      "category_slugs": ["project-zomboid/rent"],
-      "use_game_scope": true,
-      "use_html_degrade": true,
-      "advanced_headers": {},
-      "advanced_cookies": {},
+      "category_ids": [2893],
       "options": {
         "profile": "balanced",
         "include_reviews": true,
-        "include_demand_index": true,
-        "include_fallback_scan": true,
-        "section_limit": 80,
-        "seller_limit": 3,
-        "review_pages_per_seller": 3,
-        "history_points_limit": 60
+        "include_demand_index": true
+      }
+    },
+    "ggsell": {
+      "category_type_slug": "games",
+      "category_slugs": ["pragmata"],
+      "use_type_scope": false,
+      "options": {
+        "profile": "safe",
+        "include_reviews": false,
+        "include_demand_index": false,
+        "section_limit": 10
       }
     }
   }
 }
 ```
+
+## Важные замечания
+
+- По умолчанию действует strict policy по прокси: если прокси-пулы пустые, сервис может вернуть `proxy_required`.
+- `allow_direct_fallback=true` разрешает запуск без прокси в текущем запросе.
+- Для пустого `query` нужно задать scope площадки (`category_ids`, `category_slugs`, `category_game_slug` и т.д.).
+- Для крупных категорий используется lower-bound диагностика покрытия.
+
+## Документация
+
+- API v2: [docs/API_V2.md](docs/API_V2.md)
+- Архитектура и провайдеры: [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)
 
 ## Тесты
 
