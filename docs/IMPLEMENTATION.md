@@ -1,51 +1,100 @@
-# v2 Implementation Notes
+# Архитектура v2
 
-## Core idea
+## Цель
 
-Продукт переведен на провайдерную архитектуру:
+Сервис агрегирует предложения с разных площадок в единый формат, чтобы:
+- считать общие KPI рынка,
+- сравнивать площадки между собой,
+- детально анализировать каждую площадку в отдельности.
 
-- `MarketplaceProvider` — единый контракт площадки;
-- `FunPayProvider` и `PlayerOkProvider` — реализованные провайдеры;
+## Основные сущности
+
+- `MarketplaceProvider` — контракт провайдера площадки.
+- `MarketplaceRegistry` — реестр провайдеров и их доступности.
 - `GlobalAnalyzerService` — оркестратор мульти-площадочного запуска.
+- `MarketplaceRunResultDTO` — результат провайдера (`summary`, `core`, `raw`).
 
-## Data shape
+## Контракт провайдера
 
-Результат площадки состоит из:
+Каждый провайдер реализует:
+- `analyze(common_filters, marketplace_filters) -> MarketplaceRunResultDTO`
+- `list_offers(run_result, ...) -> MarketplaceOffersResponseDTO`
 
-- `summary` — метрики и диагностика площадки;
-- `core` — normalized entities (offers/sellers/reviews) для межплощадочного сравнения;
-- `raw` — площадко-специфичный payload (legacy FunPay JSON).
+Дополнительно провайдер может предоставлять каталожные методы (игры, категории, дерево и т.д.), которые используются UI и API.
 
-Общий результат запуска:
+## Нормализованная модель (`Core + raw`)
 
-- pooled метрики по объединенным офферам;
-- comparison по каждой площадке;
-- агрегаты (средние по площадкам).
+### Core
 
-## API
+Унифицированные поля для кросс-площадочного анализа:
+- офферы (`NormalizedOfferDTO`),
+- продавцы (`NormalizedSellerDTO`),
+- отзывы (`NormalizedReviewDTO`).
 
-Роуты v2:
+### Raw
 
-- `POST /v2/analyze`
-- `GET /v2/analyze/{run_id}`
-- `GET /v2/analyze/{run_id}/overview`
-- `GET /v2/analyze/{run_id}/marketplaces/{marketplace}`
-- `GET /v2/analyze/{run_id}/marketplaces/{marketplace}/offers`
-- `GET /v2/history`
-- `GET /v2/marketplaces`
-- `GET /v2/marketplaces/funpay/categories`
-- `GET /v2/marketplaces/playerok/categories`
+Площадко-специфичные данные:
+- диагностические таблицы,
+- внутренние warnings,
+- расширенные графики,
+- служебные метаданные парсинга.
 
-Для не реализованных площадок возвращается явная ошибка:
+## Текущие провайдеры
 
-- `detail.code = marketplace_not_available`
+- `FunPayProvider`
+- `PlayerOkProvider`
+- `GgSellProvider`
+- `PlatiMarketProvider`
 
-## UI routing
+Все провайдеры подключены в `MarketplaceRegistry` как `enabled=true`.
 
-- `/` — общий анализ (overview);
-- `/analysis/{marketplace}` — детальная страница площадки (сейчас `funpay` и `playerok`).
+## Кэширование
 
-## Current scope
+- Кэш результата провайдера: таблица `AnalysisCache`.
+- Ключ кэша включает:
+  - query,
+  - валюту,
+  - locale,
+  - scope,
+  - effective options.
+- TTL по умолчанию: 24 часа.
 
-- Реализованы провайдеры `funpay` и `playerok`.
-- `ggsell`, `platimarket` отображаются в UI/API каталоге как disabled.
+## Прокси и сетевая политика
+
+- Runtime-пулы прокси хранятся в БД (`RuntimeNetworkSettings`).
+- Разрешение источника:
+  1. runtime settings (БД),
+  2. marketplace/common override из запроса,
+  3. env.
+- По умолчанию strict policy: если прокси нет, возвращается `proxy_required`.
+- Для разового запуска можно передать `allow_direct_fallback=true`.
+
+## Очереди и выполнение
+
+- `POST /v2/analyze` поддерживает режимы:
+  - `sync`,
+  - `async`,
+  - `auto`.
+- В `auto` оркестратор определяет heavy/safe запуск по options и количеству площадок.
+- Async задачи уходят в Redis/RQ.
+
+## История и наблюдаемость
+
+- Запуски сохраняются в `AnalysisRequest` (`mode=global_v2`).
+- В истории доступны:
+  - pooled-метрики,
+  - метрики по каждой площадке,
+  - сохраненные фильтры запуска.
+- Прогресс ведется по этапам с логами.
+
+## Swagger/OpenAPI
+
+- `/docs` — Swagger UI
+- `/swagger` — алиас Swagger UI
+- `/openapi.json` — OpenAPI схема
+
+Swagger сгруппирован по тегам:
+- `Анализ`
+- `Результаты`
+- `Каталоги`
+- `Настройки`

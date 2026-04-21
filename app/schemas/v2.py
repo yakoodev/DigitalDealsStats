@@ -72,10 +72,21 @@ class PlatiMarketFiltersDTO(BaseModel):
     mobile_proxies: list[str] | None = None
 
 
+class GgSellFiltersDTO(BaseModel):
+    category_type_slug: str | None = None
+    category_slugs: list[str] = Field(default_factory=list)
+    use_type_scope: bool = True
+    options: AnalyzeOptionsDTO = Field(default_factory=AnalyzeOptionsDTO)
+    datacenter_proxies: list[str] | None = None
+    residential_proxies: list[str] | None = None
+    mobile_proxies: list[str] | None = None
+
+
 class MarketplaceFiltersDTO(BaseModel):
     funpay: FunPayFiltersDTO | None = None
     playerok: PlayerOkFiltersDTO | None = None
     platimarket: PlatiMarketFiltersDTO | None = None
+    ggsell: GgSellFiltersDTO | None = None
 
 
 class AnalyzeV2RequestDTO(BaseModel):
@@ -188,6 +199,8 @@ class MarketplaceSummaryDTO(BaseModel):
     category_ids: list[int] = Field(default_factory=list)
     category_game_slug: str | None = None
     category_slugs: list[str] = Field(default_factory=list)
+    ggsell_type_slug: str | None = None
+    ggsell_category_slugs: list[str] = Field(default_factory=list)
     platimarket_game_id: int | None = None
     platimarket_game_slug: str | None = None
     platimarket_game_name: str | None = None
@@ -288,6 +301,8 @@ class HistoryRunItemDTO(BaseModel):
     category_ids: list[int] = Field(default_factory=list)
     category_game_slug: str | None = None
     category_slugs: list[str] = Field(default_factory=list)
+    ggsell_type_slug: str | None = None
+    ggsell_category_slugs: list[str] = Field(default_factory=list)
     platimarket_game_id: int | None = None
     platimarket_game_slug: str | None = None
     platimarket_game_name: str | None = None
@@ -326,6 +341,32 @@ class PlayerOkCategoriesResponseDTO(BaseModel):
     generated_at: datetime
     source: str = "network"
     games: list[PlayerOkCategoryGameDTO]
+
+
+class GgSellCategoryTypeDTO(BaseModel):
+    type_slug: str
+    type_name: str
+    category_url: str | None = None
+    icon_alias: str | None = None
+
+
+class GgSellCategoryDTO(BaseModel):
+    category_slug: str
+    category_name: str
+    category_url: str
+    type_slug: str | None = None
+    type_name: str | None = None
+    parent_slug: str | None = None
+    parent_name: str | None = None
+    digi_catalog: int | None = None
+    offers_count: int | None = None
+
+
+class GgSellCategoriesResponseDTO(BaseModel):
+    generated_at: datetime
+    source: str = "network"
+    types: list[GgSellCategoryTypeDTO] = Field(default_factory=list)
+    categories: list[GgSellCategoryDTO] = Field(default_factory=list)
 
 
 class PlatiCategorySectionDTO(BaseModel):

@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 
 from app.api.routes import v2_router, web_router
 from app.core.config import get_settings
@@ -31,10 +33,35 @@ async def lifespan(app: FastAPI):
 
 
 settings = get_settings()
+OPENAPI_TAGS = [
+    {
+        "name": "Анализ",
+        "description": (
+            "Запуск мульти-площадочного анализа и постановка задач в очередь."
+        ),
+    },
+    {
+        "name": "Результаты",
+        "description": "Статусы запусков, overview, детальные результаты и срез офферов.",
+    },
+    {
+        "name": "Каталоги",
+        "description": "Каталоги площадок: игры, категории, деревья разделов.",
+    },
+    {
+        "name": "Настройки",
+        "description": "Runtime-настройки сети (пулы прокси).",
+    },
+]
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
+    description=(
+        "MarketStat v2: мульти-площадочная аналитика по цифровым товарам. "
+        "Поддерживает FunPay, PlayerOK, GGSell и Plati.Market."
+    ),
     lifespan=lifespan,
+    openapi_tags=OPENAPI_TAGS,
 )
 app.include_router(web_router)
 app.include_router(v2_router)
@@ -43,3 +70,11 @@ app.include_router(v2_router)
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/swagger", include_in_schema=False)
+def swagger_alias() -> HTMLResponse:
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url or "/openapi.json",
+        title=f"{app.title} - Swagger UI",
+    )

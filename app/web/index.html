@@ -546,6 +546,7 @@
           <a id="navOverview" href="/">Общий анализ</a>
           <a id="navFunPay" href="/analysis/funpay">FunPay</a>
           <a id="navPlayerOk" href="/analysis/playerok">PlayerOK</a>
+          <a id="navGgSell" href="/analysis/ggsell">GGSell</a>
           <a id="navPlati" href="/analysis/platimarket">Plati.Market</a>
         </nav>
       </div>
@@ -767,6 +768,69 @@
               <label for="pkAdvancedCookies">Cookie override (JSON или `name=value` по строкам)</label>
               <textarea id="pkAdvancedCookies" placeholder='{"session":"..."}' disabled></textarea>
               <div class="hint">В истории запуска чувствительные значения маскируются.</div>
+            </div>
+          </div>
+          </div>
+
+          <div id="ggsellFiltersContainer" class="hidden">
+          <div class="head" style="margin:12px -14px 10px; border-top:1px solid var(--line);">GGSell фильтры</div>
+          <div class="grid">
+            <div>
+              <label for="gsProfile">Профиль</label>
+              <select id="gsProfile">
+                <option value="safe">safe</option>
+                <option value="balanced" selected>balanced</option>
+                <option value="deep">deep</option>
+              </select>
+            </div>
+            <div>
+              <label for="gsUseTypeScope">Область типа</label>
+              <select id="gsUseTypeScope">
+                <option value="true" selected>Включать категории выбранного типа</option>
+                <option value="false">Только отмеченные категории</option>
+              </select>
+            </div>
+            <div class="full">
+              <label for="gsType">Тип каталога</label>
+              <select id="gsType">
+                <option value="">Любой тип</option>
+              </select>
+              <div id="gsCategoriesSource" class="hint">Источник каталога: —</div>
+            </div>
+            <div class="full">
+              <label for="gsCategorySearch">Категории GGSell (чекбоксы)</label>
+              <input id="gsCategorySearch" type="text" placeholder="Фильтр категорий по названию/slug" />
+              <div class="actions compact" style="margin-top:6px;">
+                <button id="gsCategorySelectVisible" type="button" class="btn-secondary">Отметить видимые</button>
+                <button id="gsCategoryClearVisible" type="button" class="btn-secondary">Снять видимые</button>
+                <span id="gsCategorySelectedCount" class="chip-inline">Выбрано: 0</span>
+              </div>
+              <div id="gsCategoryChecklist" class="section-checklist"></div>
+            </div>
+            <div class="full">
+              <label for="gsCategoriesCustom">Категории (slug, ручной ввод)</label>
+              <textarea id="gsCategoriesCustom" placeholder="по одному slug на строку&#10;например:&#10;steam-accounts&#10;battle-net-top-up"></textarea>
+            </div>
+            <div>
+              <label for="gsSectionLimit">Лимит категорий сканирования</label>
+              <input id="gsSectionLimit" type="number" min="1" max="500" placeholder="по профилю" />
+            </div>
+            <div>
+              <label for="gsSellerLimit">Топ-продавцов для анализа отзывов</label>
+              <input id="gsSellerLimit" type="number" min="1" max="20" value="3" />
+            </div>
+            <div>
+              <label for="gsReviewPages">Товаров на продавца для отзывов</label>
+              <input id="gsReviewPages" type="number" min="1" max="20" value="3" />
+            </div>
+            <div>
+              <label for="gsHistoryPoints">Точек в истории</label>
+              <input id="gsHistoryPoints" type="number" min="5" max="365" value="60" />
+            </div>
+            <div class="full checks">
+              <label class="check"><input id="gsIncludeReviews" type="checkbox" />Анализировать отзывы</label>
+              <label class="check"><input id="gsIncludeDemand" type="checkbox" />Считать Demand Index</label>
+              <label class="check"><input id="gsIncludeFallback" type="checkbox" checked />Резервный обход категорий</label>
             </div>
           </div>
           </div>
@@ -1146,11 +1210,14 @@
     let marketplacesCatalog = [];
     let categoriesCatalog = [];
     let playerokCategoriesCatalog = [];
+    let ggsellTypesCatalog = [];
+    let ggsellCategoriesCatalog = [];
     let platiCatalogTree = [];
     let platiGamesCatalog = [];
     let platiGameCategoriesCatalog = [];
     let funpayCatalogLoaded = false;
     let playerokCatalogLoaded = false;
+    let ggsellCatalogLoaded = false;
     let platiCatalogTreeLoaded = false;
     let platiGamesLoaded = false;
     let networkSettingsLoaded = false;
@@ -1162,6 +1229,7 @@
     let sellerFocusPoint = null;
     let selectedSectionIds = new Set();
     let selectedPlayerOkSectionSlugs = new Set();
+    let selectedGgSellCategorySlugs = new Set();
     let selectedPlatiCategoryIds = new Set();
     let selectedPlatiGameCategoryIds = new Set();
     let platiTreeExpandedIds = new Set();
@@ -1173,6 +1241,7 @@
     const activeMarketplace = isMarketplaceRoute ? routePath.split("/")[2] : null;
     const isFunPayRoute = isMarketplaceRoute && activeMarketplace === "funpay";
     const isPlayerOkRoute = isMarketplaceRoute && activeMarketplace === "playerok";
+    const isGgSellRoute = isMarketplaceRoute && activeMarketplace === "ggsell";
     const isPlatiRoute = isMarketplaceRoute && activeMarketplace === "platimarket";
 
     const chartState = {
@@ -1271,6 +1340,9 @@
       if (!sid) return null;
       if (marketplace === "playerok") {
         return safeUrl(`https://playerok.com/profile/${encodeURIComponent(sid)}/products`);
+      }
+      if (marketplace === "ggsell") {
+        return safeUrl(`https://ggsel.net/sellers/${encodeURIComponent(sid)}`);
       }
       if (marketplace === "platimarket") {
         return safeUrl(`https://plati.market/seller/${encodeURIComponent(sid)}/`);
@@ -1403,6 +1475,30 @@
       const node = $("pkSectionSelectedCount");
       if (!node) return;
       const count = selectedPlayerOkSectionSlugs.size;
+      node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
+    }
+
+    function syncGgSellCategorySelectionFromDom() {
+      const checklist = $("gsCategoryChecklist");
+      if (!checklist) return;
+      const boxes = Array.from(checklist.querySelectorAll("input[type='checkbox'][data-category-slug]"));
+      for (const box of boxes) {
+        const slug = String(box.getAttribute("data-category-slug") || "").trim();
+        if (!slug) continue;
+        if (box.checked) selectedGgSellCategorySlugs.add(slug);
+        else selectedGgSellCategorySlugs.delete(slug);
+      }
+    }
+
+    function readSelectedGgSellCategorySlugs() {
+      syncGgSellCategorySelectionFromDom();
+      return [...selectedGgSellCategorySlugs].sort((left, right) => left.localeCompare(right));
+    }
+
+    function updateGgSellCategorySelectedCount() {
+      const node = $("gsCategorySelectedCount");
+      if (!node) return;
+      const count = selectedGgSellCategorySlugs.size;
       node.textContent = currentUiLocale === "en" ? `Selected: ${count}` : `Выбрано: ${count}`;
     }
 
@@ -1600,10 +1696,16 @@
       const labels = [
         ["label[for='fpSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
         ["label[for='pkSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
+        ["label[for='gsSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
         ["label[for='pmSellerLimit']", currentUiLocale === "en" ? "Top sellers for reviews analysis" : "Топ-продавцов для анализа отзывов"],
         ["label[for='uiLocale']", currentUiLocale === "en" ? "UI locale" : "Язык интерфейса"],
         ["label[for='fpSectionSearch']", currentUiLocale === "en" ? "Category sections (checkboxes)" : "Разделы категории (чекбоксы)"],
         ["label[for='pkSectionSearch']", currentUiLocale === "en" ? "PlayerOK sections (checkboxes)" : "Разделы PlayerOK (чекбоксы)"],
+        ["label[for='gsType']", currentUiLocale === "en" ? "Catalog type" : "Тип каталога"],
+        ["label[for='gsUseTypeScope']", currentUiLocale === "en" ? "Type scope" : "Область типа"],
+        ["label[for='gsCategorySearch']", currentUiLocale === "en" ? "GGSell categories (checkboxes)" : "Категории GGSell (чекбоксы)"],
+        ["label[for='gsCategoriesCustom']", currentUiLocale === "en" ? "Category slugs (manual input)" : "Категории (slug, ручной ввод)"],
+        ["label[for='gsReviewPages']", currentUiLocale === "en" ? "Offers per seller for reviews" : "Товаров на продавца для отзывов"],
         ["label[for='pmScopeMode']", currentUiLocale === "en" ? "Scope source" : "Источник области анализа"],
         ["label[for='pmSectionSearch']", currentUiLocale === "en" ? "Plati catalog tree (ID_R)" : "Дерево каталога Plati (ID_R)"],
         ["label[for='pmGame']", currentUiLocale === "en" ? "Plati.Market game" : "Игра Plati.Market"],
@@ -1653,6 +1755,14 @@
       }
       const pmSectionSelectVisible = $("pmSectionSelectVisible");
       const pmSectionClearVisible = $("pmSectionClearVisible");
+      const gsCategorySelectVisible = $("gsCategorySelectVisible");
+      const gsCategoryClearVisible = $("gsCategoryClearVisible");
+      if (gsCategorySelectVisible) {
+        gsCategorySelectVisible.textContent = currentUiLocale === "en" ? "Select visible" : "Отметить видимые";
+      }
+      if (gsCategoryClearVisible) {
+        gsCategoryClearVisible.textContent = currentUiLocale === "en" ? "Clear visible" : "Снять видимые";
+      }
       if (pmSectionSelectVisible) {
         pmSectionSelectVisible.textContent = currentUiLocale === "en" ? "Select visible" : "Отметить видимые";
       }
@@ -1687,6 +1797,7 @@
       if (modalCancel) modalCancel.textContent = currentUiLocale === "en" ? "Cancel" : "Отмена";
       updateSectionSelectedCount();
       updatePlayerOkSectionSelectedCount();
+      updateGgSellCategorySelectedCount();
       updatePlatiSectionSelectedCount();
       updatePlatiGameCategorySelectedCount();
       setPlatiScopeMode(getPlatiScopeMode(), { ensureData: false });
@@ -1808,10 +1919,12 @@
       $("navOverview").href = `/${runPart}`;
       $("navFunPay").href = `/analysis/funpay${runPart}`;
       $("navPlayerOk").href = `/analysis/playerok${runPart}`;
+      $("navGgSell").href = `/analysis/ggsell${runPart}`;
       $("navPlati").href = `/analysis/platimarket${runPart}`;
       $("navOverview").classList.toggle("active", !isMarketplaceRoute);
       $("navFunPay").classList.toggle("active", activeMarketplace === "funpay");
       $("navPlayerOk").classList.toggle("active", activeMarketplace === "playerok");
+      $("navGgSell").classList.toggle("active", activeMarketplace === "ggsell");
       $("navPlati").classList.toggle("active", activeMarketplace === "platimarket");
 
       const runId = runIdInput.value.trim() || selectedRunId || "";
@@ -1882,6 +1995,7 @@
       const runBtn = $("runBtn");
       const funpayFilters = $("funpayFiltersContainer");
       const playerokFilters = $("playerokFiltersContainer");
+      const ggsellFilters = $("ggsellFiltersContainer");
       const platiFilters = $("platimarketFiltersContainer");
       const commonOptions = $("commonOptionsBlock");
       const singleHintValue = singleHint.querySelector(".value");
@@ -1889,6 +2003,7 @@
       runBtn.disabled = false;
       funpayFilters.classList.remove("hidden");
       playerokFilters.classList.add("hidden");
+      ggsellFilters.classList.add("hidden");
       platiFilters.classList.add("hidden");
       commonOptions.classList.remove("hidden");
 
@@ -1902,6 +2017,7 @@
         if (singleHintValue) singleHintValue.textContent = "Только FunPay (страница площадки)";
         fpPresetBlock.classList.remove("hidden");
         playerokFilters.classList.add("hidden");
+        ggsellFilters.classList.add("hidden");
         platiFilters.classList.add("hidden");
         runBtn.textContent = "Запустить анализ FunPay";
         return;
@@ -1918,8 +2034,26 @@
         fpPresetBlock.classList.add("hidden");
         funpayFilters.classList.add("hidden");
         playerokFilters.classList.remove("hidden");
+        ggsellFilters.classList.add("hidden");
         platiFilters.classList.add("hidden");
         runBtn.textContent = "Запустить анализ PlayerOK";
+        return;
+      }
+
+      if (isGgSellRoute) {
+        formHead.textContent = "Запуск анализа GGSell";
+        formModeNotice.className = "status ok";
+        formModeNotice.textContent = "Режим страницы площадки: запускается только GGSell, без выбора других площадок.";
+        formModeNotice.classList.remove("hidden");
+        marketBlock.classList.add("hidden");
+        singleHint.classList.remove("hidden");
+        if (singleHintValue) singleHintValue.textContent = "Только GGSell (страница площадки)";
+        fpPresetBlock.classList.add("hidden");
+        funpayFilters.classList.add("hidden");
+        playerokFilters.classList.add("hidden");
+        ggsellFilters.classList.remove("hidden");
+        platiFilters.classList.add("hidden");
+        runBtn.textContent = "Запустить анализ GGSell";
         return;
       }
 
@@ -1934,12 +2068,13 @@
         fpPresetBlock.classList.add("hidden");
         funpayFilters.classList.add("hidden");
         playerokFilters.classList.add("hidden");
+        ggsellFilters.classList.add("hidden");
         platiFilters.classList.remove("hidden");
         runBtn.textContent = "Запустить анализ Plati.Market";
         return;
       }
 
-      if (isMarketplaceRoute && !isFunPayRoute && !isPlayerOkRoute && !isPlatiRoute) {
+      if (isMarketplaceRoute && !isFunPayRoute && !isPlayerOkRoute && !isGgSellRoute && !isPlatiRoute) {
         formHead.textContent = "Запуск анализа площадки";
         formModeNotice.className = "status err";
         formModeNotice.textContent = `Площадка "${activeMarketplace}" пока не реализована. Запуск недоступен.`;
@@ -1949,6 +2084,7 @@
         fpPresetBlock.classList.add("hidden");
         funpayFilters.classList.add("hidden");
         playerokFilters.classList.add("hidden");
+        ggsellFilters.classList.add("hidden");
         platiFilters.classList.add("hidden");
         commonOptions.classList.add("hidden");
         runBtn.textContent = "Запуск недоступен";
@@ -2953,6 +3089,9 @@
       if (isPlayerOkRoute) {
         return ["playerok"];
       }
+      if (isGgSellRoute) {
+        return ["ggsell"];
+      }
       if (isPlatiRoute) {
         return ["platimarket"];
       }
@@ -3033,6 +3172,30 @@
         if (Object.keys(advancedCookies).length > 0) {
           payload.marketplace_filters.playerok.advanced_cookies = advancedCookies;
         }
+      }
+      if (marketplaces.includes("ggsell")) {
+        const selectedSlugs = readSelectedGgSellCategorySlugs();
+        const manualSlugs = parseLines("gsCategoriesCustom")
+          .map((item) => String(item || "").trim().replace(/^\/+|\/+$/g, ""))
+          .filter((item) => item.length > 0);
+        const categorySlugs = [...new Set([...selectedSlugs, ...manualSlugs])]
+          .sort((left, right) => left.localeCompare(right));
+        const typeSlug = String($("gsType").value || "").trim() || null;
+        payload.marketplace_filters.ggsell = {
+          category_type_slug: typeSlug,
+          category_slugs: categorySlugs,
+          use_type_scope: $("gsUseTypeScope").value !== "false",
+          options: {
+            profile: $("gsProfile").value,
+            include_reviews: $("gsIncludeReviews").checked,
+            include_demand_index: $("gsIncludeDemand").checked,
+            include_fallback_scan: $("gsIncludeFallback").checked,
+            section_limit: readInt("gsSectionLimit"),
+            seller_limit: readInt("gsSellerLimit"),
+            review_pages_per_seller: readInt("gsReviewPages"),
+            history_points_limit: readInt("gsHistoryPoints"),
+          },
+        };
       }
       if (marketplaces.includes("platimarket")) {
         const scopeMode = getPlatiScopeMode();
@@ -3196,6 +3359,10 @@
         await loadPlayerOkCategories();
         return;
       }
+      if (slug === "ggsell" && !ggsellCatalogLoaded) {
+        await loadGgSellCategories();
+        return;
+      }
       if (slug === "platimarket") {
         if (!platiCatalogTreeLoaded) {
           await loadPlatiCategories();
@@ -3211,6 +3378,7 @@
       const selected = new Set(selectMarketplaceValues());
       $("funpayFiltersContainer").classList.toggle("hidden", !selected.has("funpay"));
       $("playerokFiltersContainer").classList.toggle("hidden", !selected.has("playerok"));
+      $("ggsellFiltersContainer").classList.toggle("hidden", !selected.has("ggsell"));
       $("platimarketFiltersContainer").classList.toggle("hidden", !selected.has("platimarket"));
       for (const slug of selected) {
         ensureMarketplaceCatalogLoaded(slug).catch(() => null);
@@ -3347,6 +3515,86 @@
       }).join("");
       updatePlayerOkSectionSelectedCount();
     }
+
+    function renderGgSellTypesSelect() {
+      const select = $("gsType");
+      if (!select) return;
+      const current = String(select.value || "").trim();
+      const options = [
+        `<option value="">${currentUiLocale === "en" ? "Any type" : "Любой тип"}</option>`,
+      ];
+      const sorted = [...(ggsellTypesCatalog || [])].sort((left, right) =>
+        String(left.type_name || left.type_slug || "").localeCompare(String(right.type_name || right.type_slug || ""), localeTag())
+      );
+      for (const item of sorted) {
+        const slug = String(item.type_slug || "").trim();
+        if (!slug) continue;
+        const name = String(item.type_name || slug).trim();
+        options.push(`<option value="${escapeHtml(slug)}">${escapeHtml(name)}</option>`);
+      }
+      select.innerHTML = options.join("");
+      const hasCurrent = sorted.some((item) => String(item.type_slug || "").trim() === current);
+      select.value = hasCurrent ? current : "";
+    }
+
+    function updateGgSellCategoryOptions() {
+      syncGgSellCategorySelectionFromDom();
+      const typeSlug = String($("gsType").value || "").trim();
+      const searchValue = String($("gsCategorySearch").value || "").trim().toLowerCase();
+      let options = Array.isArray(ggsellCategoriesCatalog) ? [...ggsellCategoriesCatalog] : [];
+      if (typeSlug) {
+        options = options.filter((item) => String(item.type_slug || "").trim() === typeSlug);
+      }
+      if (searchValue) {
+        options = options.filter((item) => {
+          const haystack = [
+            item.category_name,
+            item.category_slug,
+            item.type_name,
+            item.parent_name,
+          ].map((part) => String(part || "").toLowerCase()).join(" ");
+          return haystack.includes(searchValue);
+        });
+      }
+      options.sort((left, right) => {
+        const lType = String(left.type_name || left.type_slug || "");
+        const rType = String(right.type_name || right.type_slug || "");
+        const typeCmp = lType.localeCompare(rType, localeTag());
+        if (typeCmp !== 0) return typeCmp;
+        return String(left.category_name || left.category_slug || "")
+          .localeCompare(String(right.category_name || right.category_slug || ""), localeTag());
+      });
+      const checklist = $("gsCategoryChecklist");
+      if (!options.length) {
+        checklist.innerHTML = `<div class="section-empty">${currentUiLocale === "en" ? "No categories found by current filter." : "По текущему фильтру категории не найдены."}</div>`;
+        updateGgSellCategorySelectedCount();
+        return;
+      }
+      checklist.innerHTML = options.map((item) => {
+        const slug = String(item.category_slug || "").trim();
+        if (!slug) return "";
+        const checked = selectedGgSellCategorySlugs.has(slug) ? "checked" : "";
+        const typeName = String(item.type_name || item.type_slug || "—");
+        const parentName = String(item.parent_name || "").trim();
+        const offers = item.offers_count === null || item.offers_count === undefined ? "—" : formatNum(item.offers_count);
+        const hints = [
+          parentName ? `${currentUiLocale === "en" ? "Parent" : "Родитель"}: ${parentName}` : null,
+          `${currentUiLocale === "en" ? "Type" : "Тип"}: ${typeName}`,
+          `${currentUiLocale === "en" ? "offers" : "офферов"}: ${offers}`,
+        ].filter(Boolean).join(" · ");
+        return `
+          <label class="check section-item">
+            <input type="checkbox" data-category-slug="${escapeHtml(slug)}" ${checked} />
+            <div>
+              <div><b>${escapeHtml(item.category_name || slug)}</b></div>
+              <div class="hint">${escapeHtml(hints)}</div>
+            </div>
+          </label>
+        `;
+      }).join("");
+      updateGgSellCategorySelectedCount();
+    }
+
     function getPlatiCatalogSectionsFlat() {
       const rows = [];
       const walk = (node) => {
@@ -3635,6 +3883,28 @@
       playerokCatalogLoaded = true;
     }
 
+    async function loadGgSellCategories() {
+      const data = await runWithProxyFallback(() =>
+        fetchJson(withDirectFallbackQuery("/v2/marketplaces/ggsell/categories"))
+      );
+      ggsellTypesCatalog = Array.isArray(data.types) ? data.types : [];
+      ggsellCategoriesCatalog = Array.isArray(data.categories) ? data.categories : [];
+      const validSlugs = new Set(
+        ggsellCategoriesCatalog
+          .map((item) => String(item.category_slug || "").trim())
+          .filter((item) => item.length > 0)
+      );
+      selectedGgSellCategorySlugs = new Set(
+        [...selectedGgSellCategorySlugs].filter((slug) => validSlugs.has(slug))
+      );
+      renderGgSellTypesSelect();
+      updateGgSellCategoryOptions();
+      $("gsCategoriesSource").textContent = currentUiLocale === "en"
+        ? `Catalog source: ${data.source || "network"}`
+        : `Источник каталога: ${data.source || "network"}`;
+      ggsellCatalogLoaded = true;
+    }
+
     async function loadPlatiCategories() {
       const data = await runWithProxyFallback(() =>
         fetchJson(withDirectFallbackQuery("/v2/marketplaces/platimarket/catalog-tree"))
@@ -3847,6 +4117,52 @@
             links.push(`<a href="${escapeHtml(game.game_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(game.game_name)}</a>`);
           } else {
             links.push(`<a href="https://playerok.com/${escapeHtml(item.category_game_slug)}" target="_blank" rel="noopener noreferrer">${currentUiLocale === "en" ? "Game" : "Игра"} ${escapeHtml(item.category_game_slug)}</a>`);
+          }
+        }
+        return links.length ? links.join(", ") : "—";
+      }
+
+      const ggsellCategoryBySlug = new Map();
+      for (const category of ggsellCategoriesCatalog || []) {
+        const slug = String(category.category_slug || "").trim();
+        if (!slug) continue;
+        ggsellCategoryBySlug.set(slug, category);
+      }
+      const ggsellTypeBySlug = new Map();
+      for (const type of ggsellTypesCatalog || []) {
+        const slug = String(type.type_slug || "").trim();
+        if (!slug) continue;
+        ggsellTypeBySlug.set(slug, type);
+      }
+      const ggsellCategorySlugs = Array.isArray(item.ggsell_category_slugs) ? item.ggsell_category_slugs : [];
+      const ggsellTypeSlug = String(item.ggsell_type_slug || "").trim();
+      if (ggsellCategorySlugs.length || ggsellTypeSlug) {
+        const links = [];
+        for (const rawSlug of ggsellCategorySlugs) {
+          const slug = String(rawSlug || "").trim();
+          if (!slug) continue;
+          const category = ggsellCategoryBySlug.get(slug);
+          if (category) {
+            const href = safeUrl(category.category_url) || safeUrl(`https://ggsel.net/catalog/${slug}`);
+            const text = escapeHtml(category.category_name || slug);
+            links.push(href
+              ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>`
+              : text);
+          } else {
+            links.push(`<a href="https://ggsel.net/catalog/${escapeHtml(slug)}" target="_blank" rel="noopener noreferrer">${escapeHtml(slug)}</a>`);
+          }
+        }
+        if (!links.length && ggsellTypeSlug) {
+          const type = ggsellTypeBySlug.get(ggsellTypeSlug);
+          if (type) {
+            const typeUrl = String(type.category_url || "").trim() || ggsellTypeSlug;
+            const href = safeUrl(`https://ggsel.net/catalog/${typeUrl}`);
+            const text = escapeHtml(type.type_name || ggsellTypeSlug);
+            links.push(href
+              ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${text}</a>`
+              : text);
+          } else {
+            links.push(`<a href="https://ggsel.net/catalog/${escapeHtml(ggsellTypeSlug)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ggsellTypeSlug)}</a>`);
           }
         }
         return links.length ? links.join(", ") : "—";
@@ -4196,6 +4512,35 @@
       $("pkIncludeDemand").addEventListener("change", (event) => {
         if (event.target.checked) $("pkIncludeReviews").checked = true;
       });
+      $("gsType").addEventListener("change", updateGgSellCategoryOptions);
+      $("gsCategorySearch").addEventListener("input", updateGgSellCategoryOptions);
+      $("gsCategoryChecklist").addEventListener("change", () => {
+        syncGgSellCategorySelectionFromDom();
+        updateGgSellCategorySelectedCount();
+      });
+      $("gsCategorySelectVisible").addEventListener("click", () => {
+        const nodes = Array.from($("gsCategoryChecklist").querySelectorAll("input[type='checkbox'][data-category-slug]"));
+        for (const node of nodes) {
+          const slug = String(node.getAttribute("data-category-slug") || "").trim();
+          if (!slug) continue;
+          node.checked = true;
+          selectedGgSellCategorySlugs.add(slug);
+        }
+        updateGgSellCategorySelectedCount();
+      });
+      $("gsCategoryClearVisible").addEventListener("click", () => {
+        const nodes = Array.from($("gsCategoryChecklist").querySelectorAll("input[type='checkbox'][data-category-slug]"));
+        for (const node of nodes) {
+          const slug = String(node.getAttribute("data-category-slug") || "").trim();
+          if (!slug) continue;
+          node.checked = false;
+          selectedGgSellCategorySlugs.delete(slug);
+        }
+        updateGgSellCategorySelectedCount();
+      });
+      $("gsIncludeDemand").addEventListener("change", (event) => {
+        if (event.target.checked) $("gsIncludeReviews").checked = true;
+      });
       $("pmScopeMode").addEventListener("change", async () => {
         try {
           await setPlatiScopeMode(getPlatiScopeMode(), { ensureData: true });
@@ -4415,6 +4760,8 @@
           catalogTasks.push(loadFunPayCategories());
         } else if (isPlayerOkRoute) {
           catalogTasks.push(loadPlayerOkCategories());
+        } else if (isGgSellRoute) {
+          catalogTasks.push(loadGgSellCategories());
         } else if (isPlatiRoute) {
           catalogTasks.push(loadPlatiCategories());
         }

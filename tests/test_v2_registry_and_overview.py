@@ -20,7 +20,7 @@ def test_registry_contains_marketplaces() -> None:
     slugs = {item.slug.value: item for item in items}
     assert "funpay" in slugs and slugs["funpay"].enabled is True
     assert "playerok" in slugs and slugs["playerok"].enabled is True
-    assert "ggsell" in slugs and slugs["ggsell"].enabled is False
+    assert "ggsell" in slugs and slugs["ggsell"].enabled is True
     assert "platimarket" in slugs and slugs["platimarket"].enabled is True
 
 
