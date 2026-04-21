@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from app.schemas.v2 import (
@@ -22,6 +23,8 @@ def test_registry_contains_marketplaces() -> None:
     assert "playerok" in slugs and slugs["playerok"].enabled is True
     assert "ggsell" in slugs and slugs["ggsell"].enabled is True
     assert "platimarket" in slugs and slugs["platimarket"].enabled is True
+    assert "offers" in slugs["playerok"].capabilities
+    assert slugs["platimarket"].demand_mode == "sold_total+reviews_30d"
 
 
 def _mk_result(prices: list[float], matched: int, sellers: int, p50: float | None) -> MarketplaceRunResultDTO:
@@ -141,3 +144,54 @@ def test_is_heavy_request_for_playerok_reviews() -> None:
         }
     )
     assert GlobalAnalyzerService.is_heavy_request(payload) is True
+
+
+@dataclass
+class _OfferStub:
+    offer_id: str
+    price: float
+    reviews_count: int
+    is_online: bool
+    auto_delivery: bool
+    seller_id: str
+    seller_name: str
+
+
+def test_generic_offers_pagination_is_stable_and_non_overlapping() -> None:
+    offers = [
+        _OfferStub(
+            offer_id=str(index),
+            price=float(index),
+            reviews_count=index,
+            is_online=True,
+            auto_delivery=False,
+            seller_id=str(index),
+            seller_name=f"seller_{index}",
+        )
+        for index in range(1, 11)
+    ]
+    first_page, total_first = GlobalAnalyzerService._generic_filter_offers(
+        offers,
+        limit=4,
+        offset=0,
+    )
+    second_page, total_second = GlobalAnalyzerService._generic_filter_offers(
+        offers,
+        limit=4,
+        offset=4,
+    )
+    third_page, total_third = GlobalAnalyzerService._generic_filter_offers(
+        offers,
+        limit=4,
+        offset=8,
+    )
+
+    assert total_first == 10
+    assert total_second == 10
+    assert total_third == 10
+    assert [item.offer_id for item in first_page] == ["1", "2", "3", "4"]
+    assert [item.offer_id for item in second_page] == ["5", "6", "7", "8"]
+    assert [item.offer_id for item in third_page] == ["9", "10"]
+    assert set(item.offer_id for item in first_page).isdisjoint(
+        item.offer_id for item in second_page
+    )

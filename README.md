@@ -19,12 +19,16 @@ API строится вокруг единого запуска анализа (
 ## Быстрый старт (локально)
 
 ```bash
-python -m venv .venv
+py -3.11 --version
+py -3.11 -m venv .venv
 .venv\Scripts\activate
+python --version
 pip install -e .
 copy .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Ожидается `Python 3.11+` (см. `requires-python` в `pyproject.toml`).
 
 Проверка:
 
@@ -52,6 +56,15 @@ curl http://localhost:8000/v2/marketplaces
 3. `GET /v2/analyze/{run_id}/overview` — pooled сводка.
 4. `GET /v2/analyze/{run_id}/marketplaces/{marketplace}` — детали площадки.
 5. `GET /v2/analyze/{run_id}/marketplaces/{marketplace}/offers` — полный срез офферов с фильтрами.
+
+## Модульный паспорт площадок
+
+`GET /v2/marketplaces` теперь возвращает не только `enabled/route`, но и модульные поля:
+- `capabilities` — поддерживаемые возможности модуля,
+- `data_source` — основной источник данных,
+- `demand_mode` — режим расчета спроса.
+
+Это используется и в UI (блок выбора площадок), и в документации как единая карта возможностей модулей.
 
 ## Минимальный пример запроса
 
@@ -102,10 +115,12 @@ curl http://localhost:8000/v2/marketplaces
 
 - API v2: [docs/API_V2.md](docs/API_V2.md)
 - Архитектура и провайдеры: [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)
+- Паспорта модулей: [docs/MODULES.md](docs/MODULES.md)
 
 ## Тесты
 
 ```bash
 pip install -e .[dev]
+python -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11+ required'"
 pytest
 ```
