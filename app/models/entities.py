@@ -134,6 +134,20 @@ class RuntimeNetworkSettings(Base):
     )
 
 
+class DdcrmProjectToken(Base):
+    __tablename__ = "ddcrm_project_tokens"
+
+    project_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    token_hash_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    scopes_csv: Mapped[str] = mapped_column(String(120), nullable=False, default="read,jobs")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 Index("ix_offer_snapshots_request_offer", OfferSnapshot.request_id, OfferSnapshot.offer_id)
 Index("ix_review_snapshots_request_seller", ReviewSnapshot.request_id, ReviewSnapshot.seller_id)
 Index(

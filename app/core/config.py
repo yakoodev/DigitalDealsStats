@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     residential_proxies: str = ""
     mobile_proxies: str = ""
 
+    ddcrm_service_auth_enabled: bool = True
+    ddcrm_service_auth_tokens: str = ""
+    ddcrm_project_token_signing_salt: str = "funpaystat-default-project-token-salt"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
