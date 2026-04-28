@@ -72,6 +72,12 @@ Pooled overview по всем площадкам запуска:
 
 Каталог площадок и их доступность.
 
+Поля:
+- `slug`, `label`, `enabled`, `route_path`
+- `capabilities` — список возможностей модуля (`offers`, `reviews`, `demand_index`, ...)
+- `data_source` — источник данных модуля
+- `demand_mode` — режим расчёта demand-метрик
+
 ### FunPay
 
 - `GET /marketplaces/funpay/categories`

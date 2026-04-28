@@ -18,21 +18,44 @@ class MarketplaceInfo:
     label: str
     enabled: bool
     reason: str | None = None
+    capabilities: tuple[str, ...] = ()
+    data_source: str | None = None
+    demand_mode: str | None = None
 
 
 class MarketplaceRegistry:
     CATALOG: tuple[MarketplaceInfo, ...] = (
-        MarketplaceInfo(slug=MarketplaceSlug.funpay, label="FunPay", enabled=True),
-        MarketplaceInfo(slug=MarketplaceSlug.playerok, label="PlayerOK", enabled=True),
+        MarketplaceInfo(
+            slug=MarketplaceSlug.funpay,
+            label="FunPay",
+            enabled=True,
+            capabilities=("offers", "coverage", "reviews", "demand_index", "history"),
+            data_source="public_html",
+            demand_mode="review_match_game_price",
+        ),
+        MarketplaceInfo(
+            slug=MarketplaceSlug.playerok,
+            label="PlayerOK",
+            enabled=True,
+            capabilities=("offers", "coverage", "reviews", "demand_index", "history", "graphql_first"),
+            data_source="graphql+html_degrade",
+            demand_mode="review_match_game_price",
+        ),
         MarketplaceInfo(
             slug=MarketplaceSlug.ggsell,
             label="GGSell",
             enabled=True,
+            capabilities=("offers", "coverage", "reviews", "demand_index", "history"),
+            data_source="public_api+html_reviews",
+            demand_mode="sold_total+reviews_30d",
         ),
         MarketplaceInfo(
             slug=MarketplaceSlug.platimarket,
             label="Plati.Market",
             enabled=True,
+            capabilities=("offers", "coverage", "reviews", "demand_index", "history", "sold_count"),
+            data_source="public_http_api+html",
+            demand_mode="sold_total+reviews_30d",
         ),
     )
 
@@ -77,6 +100,9 @@ class MarketplaceRegistry:
                 enabled=item.enabled,
                 reason=item.reason,
                 route_path=f"/analysis/{item.slug.value}",
+                capabilities=list(item.capabilities),
+                data_source=item.data_source,
+                demand_mode=item.demand_mode,
             )
             for item in cls.CATALOG
         ]

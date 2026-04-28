@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import v2_router, web_router
 from app.core.config import get_settings
@@ -63,6 +65,10 @@ app = FastAPI(
     lifespan=lifespan,
     openapi_tags=OPENAPI_TAGS,
 )
+WEB_ROOT = Path(__file__).resolve().parent / "web"
+STATIC_ROOT = WEB_ROOT / "static"
+if STATIC_ROOT.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_ROOT)), name="static")
 app.include_router(web_router)
 app.include_router(v2_router)
 

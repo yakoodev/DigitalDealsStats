@@ -272,6 +272,9 @@ class MarketplaceCatalogItemDTO(BaseModel):
     enabled: bool
     reason: str | None = None
     route_path: str
+    capabilities: list[str] = Field(default_factory=list)
+    data_source: str | None = None
+    demand_mode: str | None = None
 
 
 class MarketplacesCatalogResponseDTO(BaseModel):
