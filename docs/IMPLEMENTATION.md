@@ -48,6 +48,13 @@
 
 Все провайдеры подключены в `MarketplaceRegistry` как `enabled=true`.
 
+В `MarketplaceRegistry` для каждого модуля также задан "паспорт":
+- `capabilities`
+- `data_source`
+- `demand_mode`
+
+Эти поля отдаются наружу через `GET /v2/marketplaces` и используются UI.
+
 ## Кэширование
 
 - Кэш результата провайдера: таблица `AnalysisCache`.

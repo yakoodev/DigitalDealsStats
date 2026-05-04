@@ -13,6 +13,8 @@ def test_v2_marketplaces_endpoint_available() -> None:
     assert slugs["playerok"]["enabled"] is True
     assert slugs["ggsell"]["enabled"] is True
     assert slugs["platimarket"]["enabled"] is True
+    assert "offers" in slugs["funpay"]["capabilities"]
+    assert slugs["ggsell"]["data_source"] == "public_api+html_reviews"
 
 
 def test_v2_empty_query_requires_scope_for_ggsell() -> None:

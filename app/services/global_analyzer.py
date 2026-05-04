@@ -8,10 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models import AnalysisRequest
+from app.schemas.analyze import CategoryGameDTO
 from app.schemas.v2 import (
     AnalyzeV2EnvelopeDTO,
     AnalyzeV2RequestDTO,
     CommonFiltersDTO,
+    GgSellCategoryDTO,
+    GgSellCategoryTypeDTO,
     HistoryMarketplaceItemDTO,
     HistoryRunItemDTO,
     HistoryV2ResponseDTO,
@@ -23,9 +26,15 @@ from app.schemas.v2 import (
     OffersStatsV2DTO,
     OverviewAggregatesDTO,
     OverviewV2DTO,
+    PlatiCatalogTreeNodeDTO,
+    PlatiCategoryGroupDTO,
+    PlatiGameCategoryDTO,
+    PlatiGameDTO,
+    PlayerOkCategoryGameDTO,
     ProgressLogV2DTO,
     ProgressV2DTO,
 )
+from app.services.catalog_cache import CatalogCacheService
 from app.services.i18n import tr
 from app.services.network_settings import NetworkSettingsService, mask_proxy_payload
 from app.services.marketplaces.registry import MarketplaceRegistry
@@ -40,6 +49,7 @@ class GlobalAnalyzerService:
         self.settings = settings
         self.registry = MarketplaceRegistry(db=db, settings=settings)
         self.network_settings = NetworkSettingsService(db=db, settings=settings)
+        self.catalog_cache = CatalogCacheService(db=db, settings=settings)
 
     @staticmethod
     def _utc_now() -> datetime:
@@ -48,6 +58,17 @@ class GlobalAnalyzerService:
     @classmethod
     def _utc_iso(cls) -> str:
         return cls._utc_now().isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _catalog_cache_key(resource: str, **parts: object) -> str:
+        pairs = []
+        for key in sorted(parts):
+            value = parts[key]
+            if value is None:
+                continue
+            pairs.append(f"{key}={value}")
+        suffix = "|".join(pairs)
+        return f"{resource}|{suffix}" if suffix else resource
 
     @staticmethod
     def _percentile(values: list[float], percentile: float) -> float | None:
@@ -874,9 +895,19 @@ class GlobalAnalyzerService:
         return HistoryV2ResponseDTO(generated_at=self._utc_now(), items=items)
 
     def funpay_categories(self, *, allow_direct_fallback: bool = False):
+        cache_key = self._catalog_cache_key("funpay_categories")
+        cached = self.catalog_cache.get(cache_key)
+        if isinstance(cached, list):
+            return [CategoryGameDTO.model_validate(item) for item in cached]
+
         provider = self.registry.provider_for(MarketplaceSlug.funpay)
         filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback)
-        return provider.categories(common_filters=filters)
+        items = provider.categories(common_filters=filters)
+        self.catalog_cache.set(
+            cache_key,
+            [item.model_dump(mode="json") for item in items],
+        )
+        return items
 
     def playerok_categories(
         self,
@@ -885,14 +916,29 @@ class GlobalAnalyzerService:
         allow_direct_fallback: bool = False,
         force_refresh: bool = False,
     ):
+        normalized_slug = str(game_slug or "").strip().lower() or None
+        cache_key = self._catalog_cache_key(
+            "playerok_categories",
+            slug=normalized_slug or "*",
+        )
+        cached = self.catalog_cache.get(cache_key, force_refresh=force_refresh)
+        if isinstance(cached, list):
+            return [PlayerOkCategoryGameDTO.model_validate(item) for item in cached], "cache"
+
         provider = self.registry.provider_for(MarketplaceSlug.playerok)
         filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
-        return provider.categories(
+        payload = provider.categories(
             game_slug=game_slug,
             common_filters=filters,
             force_refresh=force_refresh,
             with_source=True,
         )
+        games, source = payload if isinstance(payload, tuple) else (payload, "network")
+        self.catalog_cache.set(
+            cache_key,
+            [item.model_dump(mode="json") for item in games],
+        )
+        return games, source
 
     def ggsell_categories(
         self,
@@ -900,9 +946,28 @@ class GlobalAnalyzerService:
         allow_direct_fallback: bool = False,
         force_refresh: bool = False,
     ):
+        cache_key = self._catalog_cache_key("ggsell_categories")
+        cached = self.catalog_cache.get(cache_key, force_refresh=force_refresh)
+        if isinstance(cached, dict):
+            cached_types = cached.get("types")
+            cached_categories = cached.get("categories")
+            if isinstance(cached_types, list) and isinstance(cached_categories, list):
+                types = [GgSellCategoryTypeDTO.model_validate(item) for item in cached_types]
+                categories = [GgSellCategoryDTO.model_validate(item) for item in cached_categories]
+                return (types, categories), "cache"
+
         provider = self.registry.provider_for(MarketplaceSlug.ggsell)
         filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
-        return provider.categories(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        payload = provider.categories(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        (types, categories), source = payload if isinstance(payload, tuple) else (payload, "network")
+        self.catalog_cache.set(
+            cache_key,
+            {
+                "types": [item.model_dump(mode="json") for item in types],
+                "categories": [item.model_dump(mode="json") for item in categories],
+            },
+        )
+        return (types, categories), source
 
     def platimarket_categories(
         self,
@@ -910,9 +975,20 @@ class GlobalAnalyzerService:
         allow_direct_fallback: bool = False,
         force_refresh: bool = False,
     ):
+        cache_key = self._catalog_cache_key("platimarket_categories")
+        cached = self.catalog_cache.get(cache_key, force_refresh=force_refresh)
+        if isinstance(cached, list):
+            return [PlatiCategoryGroupDTO.model_validate(item) for item in cached], "cache"
+
         provider = self.registry.provider_for(MarketplaceSlug.platimarket)
         filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
-        return provider.categories(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        payload = provider.categories(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        groups, source = payload if isinstance(payload, tuple) else (payload, "network")
+        self.catalog_cache.set(
+            cache_key,
+            [item.model_dump(mode="json") for item in groups],
+        )
+        return groups, source
 
     def platimarket_catalog_tree(
         self,
@@ -920,9 +996,20 @@ class GlobalAnalyzerService:
         allow_direct_fallback: bool = False,
         force_refresh: bool = False,
     ):
+        cache_key = self._catalog_cache_key("platimarket_catalog_tree")
+        cached = self.catalog_cache.get(cache_key, force_refresh=force_refresh)
+        if isinstance(cached, list):
+            return [PlatiCatalogTreeNodeDTO.model_validate(item) for item in cached], "cache"
+
         provider = self.registry.provider_for(MarketplaceSlug.platimarket)
         filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
-        return provider.catalog_tree(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        payload = provider.catalog_tree(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        nodes, source = payload if isinstance(payload, tuple) else (payload, "network")
+        self.catalog_cache.set(
+            cache_key,
+            [item.model_dump(mode="json") for item in nodes],
+        )
+        return nodes, source
 
     def platimarket_games(
         self,
@@ -930,9 +1017,20 @@ class GlobalAnalyzerService:
         allow_direct_fallback: bool = False,
         force_refresh: bool = False,
     ):
+        cache_key = self._catalog_cache_key("platimarket_games")
+        cached = self.catalog_cache.get(cache_key, force_refresh=force_refresh)
+        if isinstance(cached, list):
+            return [PlatiGameDTO.model_validate(item) for item in cached], "cache"
+
         provider = self.registry.provider_for(MarketplaceSlug.platimarket)
         filters = CommonFiltersDTO(allow_direct_fallback=allow_direct_fallback, force_refresh=force_refresh)
-        return provider.games(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        payload = provider.games(common_filters=filters, force_refresh=force_refresh, with_source=True)
+        games, source = payload if isinstance(payload, tuple) else (payload, "network")
+        self.catalog_cache.set(
+            cache_key,
+            [item.model_dump(mode="json") for item in games],
+        )
+        return games, source
 
     def platimarket_game_categories(
         self,
@@ -943,19 +1041,43 @@ class GlobalAnalyzerService:
         allow_direct_fallback: bool = False,
         force_refresh: bool = False,
     ):
+        cache_key = self._catalog_cache_key(
+            "platimarket_game_categories",
+            game_id=game_id,
+            game_slug=(str(game_slug).strip().lower() if game_slug else None),
+            ui_locale=ui_locale,
+        )
+        cached = self.catalog_cache.get(cache_key, force_refresh=force_refresh)
+        if isinstance(cached, dict):
+            cached_game_id = cached.get("game_id")
+            cached_game_slug = cached.get("game_slug")
+            cached_categories = cached.get("categories")
+            if isinstance(cached_categories, list):
+                categories = [PlatiGameCategoryDTO.model_validate(item) for item in cached_categories]
+                return cached_game_id, cached_game_slug, categories
+
         provider = self.registry.provider_for(MarketplaceSlug.platimarket)
         filters = CommonFiltersDTO(
             ui_locale=ui_locale,
             allow_direct_fallback=allow_direct_fallback,
             force_refresh=force_refresh,
         )
-        return provider.game_categories(
+        resolved_game_id, resolved_game_slug, categories = provider.game_categories(
             game_id=game_id,
             game_slug=game_slug,
             ui_locale=ui_locale,
             common_filters=filters,
             force_refresh=force_refresh,
         )
+        self.catalog_cache.set(
+            cache_key,
+            {
+                "game_id": resolved_game_id,
+                "game_slug": resolved_game_slug,
+                "categories": [item.model_dump(mode="json") for item in categories],
+            },
+        )
+        return resolved_game_id, resolved_game_slug, categories
 
     def get_network_settings(self):
         return self.network_settings.get()

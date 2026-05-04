@@ -72,6 +72,12 @@ Pooled overview по всем площадкам запуска:
 
 Каталог площадок и их доступность.
 
+Поля:
+- `slug`, `label`, `enabled`, `route_path`
+- `capabilities` — список возможностей модуля (`offers`, `reviews`, `demand_index`, ...)
+- `data_source` — источник данных модуля
+- `demand_mode` — режим расчёта demand-метрик
+
 ### FunPay
 
 - `GET /marketplaces/funpay/categories`
@@ -122,3 +128,23 @@ Payload:
 - `proxy_required` — strict policy, прокси не заданы.
 - `marketplace_not_available` — площадка недоступна в реестре.
 - `validation.empty_query_requires_scope` — пустой query без scope.
+
+## 6) Internal DDCRM Integration API
+
+Контур `internal/v1/ddcrm/*` используется только DDCRM integration bus.
+
+Заголовки:
+- `X-Service-Token` — сервисный токен DDCRM (обязателен).
+- `X-Project-Service-Token` — пер-проектный токен (обязателен для invoke).
+
+Эндпоинты:
+- `POST /internal/v1/ddcrm/project-tokens/upsert` — upsert активного project token и scopes (`read/jobs`).
+- `POST /internal/v1/ddcrm/project-tokens/revoke` — revoke project token по `projectId`.
+- `POST /internal/v1/ddcrm/integration/read` — allowlisted read-вызовы DDCRM.
+- `POST /internal/v1/ddcrm/integration/jobs` — allowlisted jobs-вызовы DDCRM.
+
+Ограничения:
+- токен валидируется по salted SHA-256 fingerprint;
+- запросы без валидных service token + project token отклоняются;
+- scope проверяется строго (`read`/`jobs`);
+- deny-события и lifecycle token upsert/revoke логируются.

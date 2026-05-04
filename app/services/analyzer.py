@@ -42,7 +42,6 @@ from app.schemas.analyze import (
     OffersStatsDTO,
     OffersSliceResponseDTO,
     PriceHistogramBinDTO,
-    ProgressLogDTO,
     SectionRowDTO,
     TablesDTO,
     TopOfferDTO,
@@ -51,6 +50,33 @@ from app.schemas.analyze import (
 )
 from app.services.funpay_client import FunPayClient, OfferData, ReviewData
 from app.services.i18n import tr
+from app.services.analyzer_market_metrics import (
+    compute_competition_metrics as compute_competition_metrics_helper,
+    compute_demand_stats as compute_demand_stats_helper,
+    compute_dumping_threshold as compute_dumping_threshold_helper,
+    coverage_status as coverage_status_helper,
+    extract_amounts_from_text as extract_amounts_from_text_helper,
+    is_amount_close_to_seller_prices as is_amount_close_to_seller_prices_helper,
+    is_this_month_bucket as is_this_month_bucket_helper,
+    percentile as percentile_helper,
+    select_dumping_offers as select_dumping_offers_helper,
+)
+from app.services.analyzer_history_tables import (
+    build_histogram as build_histogram_helper,
+    build_history_points as build_history_points_helper,
+    build_sections_table as build_sections_table_helper,
+    build_top_demand_sellers_table as build_top_demand_sellers_table_helper,
+    build_top_offers_table as build_top_offers_table_helper,
+    build_top_sellers_table as build_top_sellers_table_helper,
+    load_history_rows as load_history_rows_helper,
+    point_from_result_dict as point_from_result_dict_helper,
+)
+from app.services.analyzer_progress import (
+    build_progress_dto as build_progress_dto_helper,
+    read_progress_payload as read_progress_payload_helper,
+    set_progress as set_progress_helper,
+    utc_iso as utc_iso_helper,
+)
 from app.services.text_utils import (
     is_text_relevant,
     meaningful_query_tokens,
@@ -138,19 +164,10 @@ class AnalyzerService:
 
     @staticmethod
     def _utc_iso() -> str:
-        return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        return utc_iso_helper()
 
     def _read_progress_payload(self, row: AnalysisRequest) -> dict:
-        raw_payload = row.result_json if isinstance(row.result_json, dict) else {}
-        payload = json.loads(json.dumps(raw_payload))
-        progress = payload.get("progress")
-        if not isinstance(progress, dict):
-            progress = {"percent": 0.0, "stage": None, "message": None, "logs": []}
-            payload["progress"] = progress
-        logs = progress.get("logs")
-        if not isinstance(logs, list):
-            progress["logs"] = []
-        return payload
+        return read_progress_payload_helper(row)
 
     def _set_progress(
         self,
@@ -162,73 +179,18 @@ class AnalyzerService:
         append_log: bool = False,
         commit: bool = True,
     ) -> None:
-        payload = self._read_progress_payload(row)
-        progress = payload["progress"]
-        if percent is not None:
-            progress["percent"] = max(0.0, min(100.0, round(float(percent), 2)))
-        if stage is not None:
-            progress["stage"] = stage
-        if message is not None:
-            progress["message"] = message
-        if append_log and message:
-            logs = progress.get("logs", [])
-            logs.append(
-                {
-                    "ts": self._utc_iso(),
-                    "stage": stage or progress.get("stage") or "info",
-                    "message": message,
-                }
-            )
-            progress["logs"] = logs[-200:]
-        payload["progress"] = progress
-        row.result_json = payload
-        row.updated_at = datetime.now(UTC)
-        self.db.add(row)
-        if commit:
-            self.db.commit()
+        set_progress_helper(
+            self.db,
+            row,
+            percent=percent,
+            stage=stage,
+            message=message,
+            append_log=append_log,
+            commit=commit,
+        )
 
     def _build_progress_dto(self, row: AnalysisRequest) -> AnalyzeProgressDTO | None:
-        payload = row.result_json if isinstance(row.result_json, dict) else {}
-        progress_raw = payload.get("progress")
-        if not isinstance(progress_raw, dict):
-            return None
-        logs_raw = progress_raw.get("logs")
-        logs: list[ProgressLogDTO] = []
-        if isinstance(logs_raw, list):
-            for item in logs_raw[-200:]:
-                if not isinstance(item, dict):
-                    continue
-                ts_raw = item.get("ts")
-                if not isinstance(ts_raw, str):
-                    continue
-                try:
-                    ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-                except Exception:  # noqa: BLE001
-                    continue
-                message = item.get("message")
-                if not isinstance(message, str) or not message.strip():
-                    continue
-                stage = item.get("stage")
-                logs.append(
-                    ProgressLogDTO(
-                        ts=ts,
-                        stage=stage if isinstance(stage, str) and stage.strip() else "info",
-                        message=message,
-                    )
-                )
-        percent = progress_raw.get("percent")
-        try:
-            percent_value = float(percent) if percent is not None else 0.0
-        except (TypeError, ValueError):
-            percent_value = 0.0
-        stage_value = progress_raw.get("stage")
-        message_value = progress_raw.get("message")
-        return AnalyzeProgressDTO(
-            percent=max(0.0, min(100.0, percent_value)),
-            stage=stage_value if isinstance(stage_value, str) else None,
-            message=message_value if isinstance(message_value, str) else None,
-            logs=logs,
-        )
+        return build_progress_dto_helper(row)
 
     def resolve_options(
         self,
@@ -444,35 +406,15 @@ class AnalyzerService:
 
     @staticmethod
     def _extract_amounts_from_text(value: str) -> list[float]:
-        if not value:
-            return []
-        normalized = value.replace("\xa0", " ").replace(",", ".")
-        matches = re.findall(
-            r"(\d+(?:\.\d+)?)\s*(?:₽|руб(?:\.|ля|лей)?|rub|usd|\$|eur|€)?",
-            normalized,
-            flags=re.IGNORECASE,
-        )
-        amounts: list[float] = []
-        for raw in matches:
-            try:
-                amounts.append(float(raw))
-            except ValueError:
-                continue
-        return amounts
+        return extract_amounts_from_text_helper(value)
 
     @staticmethod
     def _is_amount_close_to_seller_prices(amount: float, seller_prices: list[float]) -> bool:
-        for price in seller_prices:
-            if price <= 0:
-                continue
-            if abs(amount - price) <= max(2.0, price * 0.40):
-                return True
-        return False
+        return is_amount_close_to_seller_prices_helper(amount, seller_prices)
 
     @staticmethod
     def _is_this_month_bucket(value: str | None) -> bool:
-        normalized = (value or "").strip().lower()
-        return normalized in {"this month", "в этом месяце"}
+        return is_this_month_bucket_helper(value)
 
     @staticmethod
     def _normalized_category_ids(
@@ -579,74 +521,23 @@ class AnalyzerService:
 
     @staticmethod
     def _percentile(values: list[float], percentile: float) -> float | None:
-        if not values:
-            return None
-        ordered = sorted(values)
-        if len(ordered) == 1:
-            return ordered[0]
-        rank = (len(ordered) - 1) * percentile
-        lower_idx = int(rank)
-        upper_idx = min(lower_idx + 1, len(ordered) - 1)
-        fraction = rank - lower_idx
-        return round(ordered[lower_idx] + (ordered[upper_idx] - ordered[lower_idx]) * fraction, 6)
+        return percentile_helper(values, percentile)
 
     @staticmethod
     def coverage_status(counter_total: int | None, loaded_count: int) -> str:
-        if counter_total is not None and loaded_count == 4000 and counter_total > loaded_count:
-            return "lower_bound"
-        return "full"
+        return coverage_status_helper(counter_total, loaded_count)
 
     @classmethod
     def compute_dumping_threshold(cls, prices: list[float]) -> float | None:
-        clean_prices = [float(value) for value in prices if value is not None]
-        if not clean_prices:
-            return None
-        q1 = cls._percentile(clean_prices, 0.25)
-        q3 = cls._percentile(clean_prices, 0.75)
-        if q1 is None or q3 is None:
-            return None
-        iqr = round(max(0.0, q3 - q1), 6)
-        if iqr > 0:
-            return round(q1 - 1.5 * iqr, 6)
-        p10 = cls._percentile(clean_prices, 0.10)
-        if p10 is None:
-            return None
-        return round(p10 * 0.8, 6)
+        return compute_dumping_threshold_helper(prices)
 
     @staticmethod
     def select_dumping_offers(offers: list[OfferData], threshold: float | None) -> list[OfferData]:
-        if threshold is None:
-            return []
-        return [offer for offer in offers if offer.price is not None and float(offer.price) < threshold]
+        return select_dumping_offers_helper(offers, threshold)
 
     @classmethod
     def compute_competition_metrics(cls, offers: list[OfferData]) -> dict[str, float | None]:
-        if not offers:
-            return {
-                "hhi": None,
-                "top3_share": None,
-                "price_spread": None,
-            }
-
-        seller_counts = Counter((offer.seller_id, offer.seller_name) for offer in offers)
-        total_offers = len(offers)
-        shares = [count / total_offers for count in seller_counts.values() if count > 0]
-        hhi = sum((share * 100) ** 2 for share in shares)
-        top3_share = sum(sorted(seller_counts.values(), reverse=True)[:3]) / total_offers
-
-        prices = [offer.price for offer in offers if offer.price is not None]
-        p10 = cls._percentile(prices, 0.10)
-        p90 = cls._percentile(prices, 0.90)
-        p50 = cls._percentile(prices, 0.50)
-        price_spread = None
-        if p10 is not None and p90 is not None and p50 is not None and p50 > 0:
-            price_spread = round((p90 - p10) / p50, 6)
-
-        return {
-            "hhi": round(hhi, 6),
-            "top3_share": round(top3_share, 6),
-            "price_spread": price_spread,
-        }
+        return compute_competition_metrics_helper(offers)
 
     @staticmethod
     def compute_demand_stats(
@@ -655,44 +546,9 @@ class AnalyzerService:
         sellers_analyzed: int = 0,
         reviews_scanned: int = 0,
     ) -> DemandStatsDTO:
-        if not relevant_reviews:
-            return DemandStatsDTO(
-                relevant_reviews=0,
-                positive_share=0.0,
-                volume_30d=0,
-                demand_index=0.0 if include_index else None,
-                unique_sellers_with_relevant_reviews=0,
-                estimated_purchases_total=0,
-                estimated_purchases_30d=0,
-                sellers_analyzed=sellers_analyzed,
-                reviews_scanned=reviews_scanned,
-            )
-
-        rated_reviews = [review for review in relevant_reviews if review.rating is not None]
-        positives = [review for review in rated_reviews if (review.rating or 0) >= 4]
-        positive_share = (len(positives) / len(rated_reviews)) if rated_reviews else 0.0
-
-        volume_30d = sum(
-            1
-            for review in relevant_reviews
-            if AnalyzerService._is_this_month_bucket(review.date_bucket)
-        )
-        unique_sellers = len({review.seller_id for review in relevant_reviews})
-
-        demand_index: float | None = None
-        if include_index:
-            volume_component = min(volume_30d, 100) / 100 * 60
-            quality_component = positive_share * 40
-            demand_index = round(volume_component + quality_component, 4)
-
-        return DemandStatsDTO(
-            relevant_reviews=len(relevant_reviews),
-            positive_share=round(positive_share, 4),
-            volume_30d=volume_30d,
-            demand_index=demand_index,
-            unique_sellers_with_relevant_reviews=unique_sellers,
-            estimated_purchases_total=len(relevant_reviews),
-            estimated_purchases_30d=volume_30d,
+        return compute_demand_stats_helper(
+            relevant_reviews,
+            include_index,
             sellers_analyzed=sellers_analyzed,
             reviews_scanned=reviews_scanned,
         )
@@ -1248,61 +1104,11 @@ class AnalyzerService:
 
     @staticmethod
     def _build_histogram(prices: list[float], bins_count: int = 8) -> list[PriceHistogramBinDTO]:
-        if not prices:
-            return []
-        min_price = min(prices)
-        max_price = max(prices)
-        if min_price == max_price:
-            return [
-                PriceHistogramBinDTO(
-                    label=f"{min_price:.2f}",
-                    from_price=min_price,
-                    to_price=max_price,
-                    count=len(prices),
-                )
-            ]
-
-        step = (max_price - min_price) / bins_count
-        buckets = [0 for _ in range(bins_count)]
-        for price in prices:
-            if step == 0:
-                idx = 0
-            else:
-                idx = int((price - min_price) / step)
-            idx = min(max(idx, 0), bins_count - 1)
-            buckets[idx] += 1
-
-        histogram: list[PriceHistogramBinDTO] = []
-        for idx, count in enumerate(buckets):
-            left = min_price + step * idx
-            right = max_price if idx == bins_count - 1 else min_price + step * (idx + 1)
-            histogram.append(
-                PriceHistogramBinDTO(
-                    label=f"{left:.2f} - {right:.2f}",
-                    from_price=round(left, 6),
-                    to_price=round(right, 6),
-                    count=count,
-                )
-            )
-        return histogram
+        return build_histogram_helper(prices, bins_count)
 
     @staticmethod
     def _point_from_result_dict(data: dict) -> HistoryPointDTO | None:
-        try:
-            offers = data.get("offers_stats") or {}
-            demand = data.get("demand") or {}
-            generated = data.get("meta", {}).get("generated_at") or data.get("generated_at")
-            if not generated:
-                return None
-            return HistoryPointDTO(
-                generated_at=datetime.fromisoformat(generated.replace("Z", "+00:00")),
-                matched_offers=int(offers.get("matched_offers", 0)),
-                unique_sellers=int(offers.get("unique_sellers", 0)),
-                p50_price=offers.get("p50_price"),
-                demand_index=demand.get("demand_index"),
-            )
-        except Exception:  # noqa: BLE001
-            return None
+        return point_from_result_dict_helper(data)
 
     def _load_history_rows(
         self,
@@ -1311,20 +1117,13 @@ class AnalyzerService:
         options_hash: str,
         limit: int,
     ) -> list[AnalysisHistory]:
-        query_norm = normalize_text(query)
-        stmt = (
-            select(AnalysisHistory)
-            .where(
-                AnalysisHistory.query_normalized == query_norm,
-                AnalysisHistory.currency == currency,
-                AnalysisHistory.options_hash == options_hash,
-            )
-            .order_by(desc(AnalysisHistory.generated_at))
-            .limit(limit)
+        return load_history_rows_helper(
+            self.db,
+            query=query,
+            currency=currency,
+            options_hash=options_hash,
+            limit=limit,
         )
-        rows = self.db.scalars(stmt).all()
-        rows.reverse()
-        return rows
 
     def _build_history_points(
         self,
@@ -1336,135 +1135,36 @@ class AnalyzerService:
         current_offers_stats: OffersStatsDTO,
         current_demand: DemandStatsDTO | None,
     ) -> tuple[list[HistoryPointDTO], DeltaDTO | None]:
-        rows = self._load_history_rows(query, currency, options_hash, max(1, limit))
-        previous_point: HistoryPointDTO | None = None
-
-        points: list[HistoryPointDTO] = []
-        for row in rows:
-            point = self._point_from_result_dict(row.result_json)
-            if point is not None:
-                points.append(point)
-                previous_point = point
-
-        current_point = HistoryPointDTO(
-            generated_at=current_generated_at,
-            matched_offers=current_offers_stats.matched_offers,
-            unique_sellers=current_offers_stats.unique_sellers,
-            p50_price=current_offers_stats.p50_price,
-            demand_index=current_demand.demand_index if current_demand else None,
-        )
-        points.append(current_point)
-        points = points[-limit:]
-
-        if previous_point is None:
-            return points, None
-
-        return points, DeltaDTO(
-            matched_offers_delta=current_point.matched_offers - previous_point.matched_offers,
-            unique_sellers_delta=current_point.unique_sellers - previous_point.unique_sellers,
-            p50_price_delta=(
-                round(current_point.p50_price - previous_point.p50_price, 6)
-                if current_point.p50_price is not None and previous_point.p50_price is not None
-                else None
-            ),
-            demand_index_delta=(
-                round(current_point.demand_index - previous_point.demand_index, 6)
-                if current_point.demand_index is not None and previous_point.demand_index is not None
-                else None
-            ),
+        return build_history_points_helper(
+            self.db,
+            query=query,
+            currency=currency,
+            options_hash=options_hash,
+            limit=limit,
+            current_generated_at=current_generated_at,
+            current_offers_stats=current_offers_stats,
+            current_demand=current_demand,
         )
 
     def _build_top_offers_table(self, offers: list[OfferData], limit: int = 20) -> list[TopOfferDTO]:
-        top = sorted(offers, key=lambda item: item.price)[:limit]
-        return [
-            TopOfferDTO(
-                offer_id=offer.offer_id,
-                offer_url=f"https://funpay.com/lots/offer?id={offer.offer_id}",
-                seller_id=offer.seller_id,
-                seller_name=offer.seller_name,
-                description=offer.description,
-                price=round(offer.price, 6),
-                currency=offer.currency,
-                reviews_count=offer.reviews_count,
-                is_online=offer.is_online,
-                auto_delivery=offer.auto_delivery,
-            )
-            for offer in top
-        ]
+        return build_top_offers_table_helper(offers, limit)
 
     def _build_top_sellers_table(self, offers: list[OfferData], limit: int = 20) -> list[TopSellerDTO]:
-        grouped: dict[tuple[int | None, str], list[OfferData]] = defaultdict(list)
-        for offer in offers:
-            grouped[(offer.seller_id, offer.seller_name)].append(offer)
-
-        rows: list[TopSellerDTO] = []
-        for (seller_id, seller_name), seller_offers in grouped.items():
-            prices = [item.price for item in seller_offers if item.price is not None]
-            online = [item for item in seller_offers if item.is_online is not None]
-            auto = [item for item in seller_offers if item.auto_delivery is not None]
-            rows.append(
-                TopSellerDTO(
-                    seller_id=seller_id,
-                    seller_name=seller_name,
-                    offers_count=len(seller_offers),
-                    min_price=min(prices) if prices else None,
-                    p50_price=self._percentile(prices, 0.5),
-                    max_price=max(prices) if prices else None,
-                    online_share=(
-                        round(sum(1 for item in online if item.is_online) / len(online), 4)
-                        if online
-                        else None
-                    ),
-                    auto_delivery_share=(
-                        round(sum(1 for item in auto if item.auto_delivery) / len(auto), 4)
-                        if auto
-                        else None
-                    ),
-                )
-            )
-
-        rows.sort(key=lambda row: (-row.offers_count, row.min_price or float("inf")))
-        return rows[:limit]
+        return build_top_sellers_table_helper(
+            offers,
+            limit=limit,
+            percentile_fn=self._percentile,
+        )
 
     @staticmethod
     def _build_top_demand_sellers_table(
         seller_stats: list[SellerDemandStat],
         limit: int = 20,
     ) -> list[TopDemandSellerDTO]:
-        top = sorted(
-            seller_stats,
-            key=lambda item: (-item.estimated_purchases_30d, -item.estimated_purchases_total, -item.reviews_scanned),
-        )[:limit]
-        return [
-            TopDemandSellerDTO(
-                seller_id=item.seller_id,
-                seller_name=item.seller_name,
-                estimated_purchases_total=item.estimated_purchases_total,
-                estimated_purchases_30d=item.estimated_purchases_30d,
-                reviews_scanned=item.reviews_scanned,
-            )
-            for item in top
-        ]
+        return build_top_demand_sellers_table_helper(seller_stats, limit=limit)
 
     def _build_sections_table(self, coverage_rows: list[CoverageRow], ui_locale: str = "ru") -> list[SectionRowDTO]:
-        sorted_rows = sorted(
-            coverage_rows,
-            key=lambda row: (0 if row.coverage_status == "lower_bound" else 1, row.section_url),
-        )
-        section_fallback_prefix = "Section" if ui_locale == "en" else "Раздел"
-        return [
-            SectionRowDTO(
-                section_url=row.section_url,
-                section_id=row.section_id,
-                section_name=row.section_name or (
-                    f"{section_fallback_prefix} #{row.section_id}" if row.section_id is not None else None
-                ),
-                counter_total=row.counter_total,
-                loaded_count=row.loaded_count,
-                coverage_status=row.coverage_status,
-            )
-            for row in sorted_rows
-        ]
+        return build_sections_table_helper(coverage_rows, ui_locale=ui_locale)
 
     def analyze(
         self,
